@@ -268,3 +268,49 @@ def delete_document(document_id):
     finally:
         if conn is not None:
             conn.close()
+
+@app.route("/api/chatbot", methods=['POST'])
+def chatbot_query():
+    """
+    Receives a user query and finds the best matching FAQ.
+    Uses a simple keyword scoring algorithm.
+    """
+    data = request.get_json()
+    user_query = data.get('query', '').lower()
+    
+    if not user_query:
+        return jsonify({"answer": "Please ask a question."})
+
+    conn = None
+    try:
+        conn = psycopg2.connect(**DB_CONFIG)
+        cur = conn.cursor()
+        cur.execute("SELECT question, answer FROM faqs;")
+        all_faqs = cur.fetchall()
+        cur.close()
+
+        best_match_answer = "I'm sorry, I don't have an answer for that. Please try rephrasing your question or contact a regulatory authority directly."
+        highest_score = 0
+        query_words = set(user_query.split())
+
+        for question, answer in all_faqs:
+            question_words = set(question.lower().split())
+            # Calculate score based on number of matching words
+            score = len(query_words.intersection(question_words))
+
+            if score > highest_score:
+                highest_score = score
+                best_match_answer = answer
+        
+        # We'll consider a score of 2 or more a decent match
+        if highest_score < 2:
+             return jsonify({"answer": "I'm sorry, I don't have a specific answer for that. You can browse the documents or contact a regulator for more help."})
+
+
+        return jsonify({"answer": best_match_answer})
+
+    except (Exception, psycopg2.DatabaseError) as error:
+        return jsonify({"answer": f"An error occurred: {error}"}), 500
+    finally:
+        if conn is not None:
+            conn.close()
