@@ -5,6 +5,13 @@ import psycopg2
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 from werkzeug.utils import secure_filename # New import for file handling
+import PyPDF2 # New import for reading PDFs
+from transformers import pipeline # New import for AI model
+
+# --- AI Summarization Model ---
+# This loads the model. In a real app, this would be done once on startup.
+# For the hackathon, loading it here is fine.
+summarizer = pipeline("summarization", model="sshleifer/distilbart-cnn-12-6")
 
 # --- DATABASE CONNECTION CONFIGURATION ---
 DB_CONFIG = {
@@ -25,6 +32,30 @@ CORS(app, resources={r"/api/*": {"origins": "*"}})
 # --- HELPER FUNCTION ---
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+def extract_text_from_pdf(file_stream):
+    """Helper function to extract text from an uploaded PDF file."""
+    try:
+        pdf_reader = PyPDF2.PdfReader(file_stream)
+        text = ""
+        for page in pdf_reader.pages:
+            text += page.extract_text()
+        return text
+    except Exception as e:
+        print(f"Error extracting text from PDF: {e}")
+        return ""
+
+def summarize_text(text, max_chunk_size=1024):
+    """Helper function to summarize long text using the AI model."""
+    if not text:
+        return ""
+    try:
+        # The model works best on chunks of text. We'll summarize the first chunk.
+        summary = summarizer(text[:max_chunk_size], max_length=150, min_length=40, do_sample=False)
+        return summary[0]['summary_text']
+    except Exception as e:
+        print(f"Error summarizing text: {e}")
+        return "Summary could not be generated."
 
 # --- API ENDPOINTS (EXISTING) ---
 @app.route("/", methods=['GET'])
@@ -94,7 +125,7 @@ def get_documents_by_service(service_id):
         cur.close()
         docs_list = []
         for row in docs_data:
-            docs_list.append({"documentID": row[0], "title": row[1], "typeName": row[2], "regulatorName": row[3]})
+            docs_list.append({"documentID": row[0], "title": row[1], "typeName": row[2], "regulatorName": row[3], "summary": row[4]})
         return jsonify(docs_list)
     except (Exception, psycopg2.DatabaseError) as error:
         return jsonify({"error": f"Database error: {error}"}), 500
@@ -159,6 +190,15 @@ def create_document():
     service_ids = request.form.getlist('serviceIDs[]') # Get list of associated services
     uploader_id = 1 # In a real app, get this from the logged-in user's token
 
+    # --- NEW AI LOGIC ---
+    text_content = ""
+    if allowed_file(file.filename):
+        if file.filename.lower().endswith('.pdf'):
+            text_content = extract_text_from_pdf(file)
+    
+    ai_summary = summarize_text(text_content)
+    # --- END OF NEW AI LOGIC ---
+	
     conn = None
     try:
         # Save the file
@@ -171,8 +211,8 @@ def create_document():
         cur = conn.cursor()
         
         # Insert into documents table and get the new ID
-        sql_doc = "INSERT INTO documents (title, regulatorID, typeID, fileURL, uploadedBy) VALUES (%s, %s, %s, %s, %s) RETURNING documentID;"
-        cur.execute(sql_doc, (title, regulator_id, type_id, file_path, uploader_id))
+        sql_doc = "INSERT INTO documents (title, regulatorID, typeID, fileURL, uploadedBy, summary_AI) VALUES (%s, %s, %s, %s, %s, %s) RETURNING documentID;"
+        cur.execute(sql_doc, (title, regulator_id, type_id, file_path, uploader_id, ai_summary))
         new_doc_id = cur.fetchone()[0]
 
         # Insert into the document_services junction table
