@@ -29,18 +29,80 @@ def allowed_file(filename):
 # --- API ENDPOINTS (EXISTING) ---
 @app.route("/", methods=['GET'])
 def health_check():
-    # ... (code is the same)
+    return jsonify({"status": "ok", "message": "FinReg Portal API is running."})
+	
 @app.route("/api/login", methods=['POST'])
 def admin_login():
-    # ... (code is the same)
+    data = request.get_json()
+    email = data.get('email')
+    if not email:
+        return jsonify({"error": "Email is required."}), 400
+    conn = None
+    try:
+        conn = psycopg2.connect(**DB_CONFIG)
+        cur = conn.cursor()
+        sql_query = "SELECT u.email FROM users u JOIN roles r ON u.roleID = r.roleID WHERE u.email = %s AND r.roleName = 'Administrator';"
+        cur.execute(sql_query, (email,))
+        admin_user = cur.fetchone()
+        cur.close()
+        if admin_user:
+            return jsonify({"success": True, "message": "Login successful."})
+        else:
+            return jsonify({"error": "Invalid credentials or not an administrator."}), 401
+    except (Exception, psycopg2.DatabaseError) as error:
+        return jsonify({"error": f"Database error: {error}"}), 500
+    finally:
+        if conn is not None:
+            conn.close()
+			
 @app.route("/api/financial-services", methods=['GET'])
 def get_financial_services():
-    # ... (code is the same)
+    conn = None
+    try:
+        conn = psycopg2.connect(**DB_CONFIG)
+        cur = conn.cursor()
+        cur.execute("SELECT serviceID, serviceName, description FROM financial_services ORDER BY serviceName;")
+        services_data = cur.fetchall()
+        cur.close()
+        services_list = []
+        for row in services_data:
+            services_list.append({"serviceID": row[0], "serviceName": row[1], "description": row[2]})
+        return jsonify(services_list)
+    except (Exception, psycopg2.DatabaseError) as error:
+        return jsonify({"error": f"Database connection failed: {error}"}), 502
+    finally:
+        if conn is not None:
+            conn.close()
+			
 @app.route("/api/documents/<int:service_id>", methods=['GET'])
 def get_documents_by_service(service_id):
-    # ... (code is the same)
+    conn = None
+    try:
+        conn = psycopg2.connect(**DB_CONFIG)
+        cur = conn.cursor()
+        sql_query = """
+            SELECT d.documentID, d.title, dt.typeName, r.name as regulatorName
+            FROM documents d
+            JOIN document_types dt ON d.typeID = dt.typeID
+            JOIN regulators r ON d.regulatorID = r.regulatorID
+            JOIN document_services ds ON d.documentID = ds.documentID
+            WHERE ds.serviceID = %s
+            ORDER BY dt.typeName, d.title;
+        """
+        cur.execute(sql_query, (service_id,))
+        docs_data = cur.fetchall()
+        cur.close()
+        docs_list = []
+        for row in docs_data:
+            docs_list.append({"documentID": row[0], "title": row[1], "typeName": row[2], "regulatorName": row[3]})
+        return jsonify(docs_list)
+    except (Exception, psycopg2.DatabaseError) as error:
+        return jsonify({"error": f"Database error: {error}"}), 500
+    finally:
+        if conn is not None:
+            conn.close()
 
-# --- NEW AND UPDATED ADMIN ENDPOINTS ---
+# --- ADMIN ENDPOINTS ---
 
 @app.route("/api/regulators", methods=['GET'])
 def get_regulators():
