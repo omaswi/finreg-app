@@ -1,6 +1,7 @@
 import os
 import psycopg2
 from flask import Flask, jsonify
+from flask_cors import CORS
 
 # --- DATABASE CONNECTION CONFIGURATION ---
 DB_CONFIG = {
@@ -13,6 +14,7 @@ DB_CONFIG = {
 
 # --- FLASK APP INITIALIZATION ---
 app = Flask(__name__)
+CORS(app) # 2. Enable CORS for the entire app
 
 # --- API ENDPOINTS ---
 @app.route("/", methods=['GET'])
