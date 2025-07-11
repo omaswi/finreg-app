@@ -18,7 +18,6 @@ CORS(app, resources={r"/api/*": {"origins": "*"}})
 
 # --- API ENDPOINTS ---
 
-# ... (keep the existing routes: '/', '/api/login', '/api/financial-services') ...
 @app.route("/", methods=['GET'])
 def health_check():
     return jsonify({"status": "ok", "message": "FinReg Portal API is running."})
@@ -94,7 +93,7 @@ def get_documents_by_service(service_id):
         if conn is not None:
             conn.close()
 
-# --- NEW ADMIN ENDPOINTS ---
+# --- ADMIN ENDPOINTS ---
 
 @app.route("/api/documents", methods=['GET'])
 def get_all_documents():
@@ -121,7 +120,6 @@ def delete_document(document_id):
     try:
         conn = psycopg2.connect(**DB_CONFIG)
         cur = conn.cursor()
-        # Note: We also need to delete from the junction table first to avoid foreign key errors
         cur.execute("DELETE FROM document_services WHERE documentID = %s;", (document_id,))
         cur.execute("DELETE FROM documents WHERE documentID = %s;", (document_id,))
         conn.commit()
