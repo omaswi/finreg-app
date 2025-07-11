@@ -16,6 +16,9 @@ DB_CONFIG = {
 app = Flask(__name__)
 CORS(app) # 2. Enable CORS for the entire app
 
+# Configure CORS to be more robust for API requests
+CORS(app, resources={r"/api/*": {"origins": "*"}})
+
 # --- API ENDPOINTS ---
 @app.route("/", methods=['GET'])
 def health_check():
