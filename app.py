@@ -240,15 +240,6 @@ def create_document():
     finally:
         if conn is not None:
             conn.close()
-        
-        return jsonify({"success": True, "message": "File uploaded successfully.", "new_document": {"documentID": new_doc_id, "title": title}}), 201
-
-    except (Exception, psycopg2.DatabaseError) as error:
-        conn.rollback()
-        return jsonify({"error": f"Database error: {error}"}), 500
-    finally:
-        if conn is not None:
-            conn.close()
 
 @app.route("/api/documents", methods=['GET'])
 def get_all_documents():
