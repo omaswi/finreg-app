@@ -173,38 +173,52 @@ def get_document_types():
 
 @app.route("/api/documents", methods=['POST'])
 def create_document():
-    """Admin endpoint to upload a new document."""
-    # Check if the post request has the file part
-    if 'file' not in request.files:
-        return jsonify({"error": "No file part"}), 400
-    file = request.files['file']
-    if file.filename == '':
-        return jsonify({"error": "No selected file"}), 400
-    if not allowed_file(file.filename):
-        return jsonify({"error": "File type not allowed"}), 400
+    # --- SIMULATE LOGGED-IN ADMIN ---
+    # In a real app, you'd get the userID from a secure session or JWT token.
+    # For this prototype, we'll assume the admin with userID=1 is logged in.
+    uploader_id = 1
 
-    # Get metadata from the form
-    title = request.form.get('title')
-    regulator_id = request.form.get('regulatorID')
-    type_id = request.form.get('typeID')
-    service_ids = request.form.getlist('serviceIDs[]') # Get list of associated services
-    uploader_id = 1 # In a real app, get this from the logged-in user's token
-
-    # --- NEW AI LOGIC ---
-    text_content = ""
-    if allowed_file(file.filename):
-        if file.filename.lower().endswith('.pdf'):
-            text_content = extract_text_from_pdf(file)
-    
-    ai_summary = summarize_text(text_content)
-    # --- END OF NEW AI LOGIC ---
-	
     conn = None
     try:
-        # Save the file
-        filename = secure_filename(file.filename)
-        file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-        file.save(file_path)
+        conn = psycopg2.connect(**DB_CONFIG)
+        cur = conn.cursor()
+
+        # --- NEW: Get the admin's regulatorID from the database ---
+        cur.execute("SELECT regulatorID FROM Users WHERE userID = %s;", (uploader_id,))
+        result = cur.fetchone()
+        if not result or result[0] is None:
+            return jsonify({"error": "Admin user is not associated with a regulator."}), 403
+        
+        admin_regulator_id = result[0]
+	
+	"""Admin endpoint to upload a new document."""
+	# Check if the post request has the file part
+	if 'file' not in request.files:
+	return jsonify({"error": "No file part"}), 400
+	file = request.files['file']
+	if file.filename == '':
+	return jsonify({"error": "No selected file"}), 400
+	if not allowed_file(file.filename):
+	return jsonify({"error": "File type not allowed"}), 400
+
+	# Get metadata from the form
+	title = request.form.get('title')
+	type_id = request.form.get('typeID')
+	service_ids = request.form.getlist('serviceIDs[]') # Get list of associated services
+
+	# --- AI LOGIC ---
+	text_content = ""
+	if allowed_file(file.filename):
+	if file.filename.lower().endswith('.pdf'):
+	    text_content = extract_text_from_pdf(file)
+	
+	ai_summary = summarize_text(text_content)
+	# --- END OF AI LOGIC ---
+	
+	# Save the file
+	filename = secure_filename(file.filename)
+	file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+	file.save(file_path)
 
         # Save metadata to database
         conn = psycopg2.connect(**DB_CONFIG)
@@ -212,7 +226,7 @@ def create_document():
         
         # Insert into documents table and get the new ID
         sql_doc = "INSERT INTO documents (title, regulatorID, typeID, fileURL, uploadedBy, summary_AI) VALUES (%s, %s, %s, %s, %s, %s) RETURNING documentID;"
-        cur.execute(sql_doc, (title, regulator_id, type_id, file_path, uploader_id, ai_summary))
+        cur.execute(sql_doc, (title, admin_regulator_id, type_id, file_path, uploader_id, ai_summary))
         new_doc_id = cur.fetchone()[0]
 
         # Insert into the document_services junction table
