@@ -314,3 +314,64 @@ def chatbot_query():
     finally:
         if conn is not None:
             conn.close()
+		
+@app.route("/api/faqs", methods=['GET'])
+def get_all_faqs():
+    """Admin endpoint to get all FAQs."""
+    conn = None
+    try:
+        conn = psycopg2.connect(**DB_CONFIG)
+        cur = conn.cursor()
+        cur.execute("SELECT faqID, question, answer FROM faqs ORDER BY question;")
+        all_faqs_data = cur.fetchall()
+        cur.close()
+        faqs_list = [{"faqID": row[0], "question": row[1], "answer": row[2]} for row in all_faqs_data]
+        return jsonify(faqs_list)
+    except (Exception, psycopg2.DatabaseError) as error:
+        return jsonify({"error": f"Database error: {error}"}), 500
+    finally:
+        if conn is not None:
+            conn.close()
+
+@app.route("/api/faqs", methods=['POST'])
+def create_faq():
+    """Admin endpoint to create a new FAQ."""
+    data = request.get_json()
+    question = data.get('question')
+    answer = data.get('answer')
+    if not question or not answer:
+        return jsonify({"error": "Question and answer are required."}), 400
+    
+    conn = None
+    try:
+        conn = psycopg2.connect(**DB_CONFIG)
+        cur = conn.cursor()
+        cur.execute("INSERT INTO faqs (question, answer) VALUES (%s, %s) RETURNING faqID;", (question, answer))
+        new_id = cur.fetchone()[0]
+        conn.commit()
+        cur.close()
+        return jsonify({"success": True, "new_faq": {"faqID": new_id, "question": question, "answer": answer}}), 201
+    except (Exception, psycopg2.DatabaseError) as error:
+        conn.rollback()
+        return jsonify({"error": str(error)}), 500
+    finally:
+        if conn is not None:
+            conn.close()
+
+@app.route("/api/faqs/<int:faq_id>", methods=['DELETE'])
+def delete_faq(faq_id):
+    """Admin endpoint to delete an FAQ."""
+    conn = None
+    try:
+        conn = psycopg2.connect(**DB_CONFIG)
+        cur = conn.cursor()
+        cur.execute("DELETE FROM faqs WHERE faqID = %s;", (faq_id,))
+        conn.commit()
+        cur.close()
+        return jsonify({"success": True, "message": f"FAQ {faq_id} deleted."})
+    except (Exception, psycopg2.DatabaseError) as error:
+        conn.rollback()
+        return jsonify({"error": str(error)}), 500
+    finally:
+        if conn is not None:
+            conn.close()
