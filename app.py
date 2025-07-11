@@ -1,6 +1,6 @@
 import os
 import psycopg2
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request
 from flask_cors import CORS
 
 # --- DATABASE CONNECTION CONFIGURATION ---
@@ -81,6 +81,49 @@ def get_documents_by_service(service_id):
             })
             
         return jsonify(docs_list)
+
+@app.route("/api/login", methods=['POST'])
+def admin_login():
+    """
+    API endpoint for administrator login.
+    In a real app, this would involve password hashing and returning a JWT token.
+    For this prototype, we'll do a simple check.
+    """
+    data = request.get_json()
+    email = data.get('email')
+    password = data.get('password') # We won't check the password in this simple version
+
+    if not email:
+        return jsonify({"error": "Email is required."}), 400
+
+    conn = None
+    try:
+        conn = psycopg2.connect(**DB_CONFIG)
+        cur = conn.cursor()
+
+        # Check if a user exists with this email and the 'Administrator' role
+        sql_query = """
+            SELECT u.email FROM users u
+            JOIN roles r ON u.roleID = r.roleID
+            WHERE u.email = %s AND r.roleName = 'Administrator';
+        """
+        cur.execute(sql_query, (email,))
+        
+        admin_user = cur.fetchone()
+        cur.close()
+        
+        if admin_user:
+            # Successful login
+            return jsonify({"success": True, "message": "Login successful."})
+        else:
+            # Failed login
+            return jsonify({"error": "Invalid credentials or not an administrator."}), 401
+
+    except (Exception, psycopg2.DatabaseError) as error:
+        return jsonify({"error": f"Database error: {error}"}), 500
+    finally:
+        if conn is not None:
+            conn.close()
 
     except (Exception, psycopg2.DatabaseError) as error:
         return jsonify({"error": f"Database error: {error}"}), 500
