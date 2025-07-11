@@ -112,7 +112,7 @@ def get_documents_by_service(service_id):
         conn = psycopg2.connect(**DB_CONFIG)
         cur = conn.cursor()
         sql_query = """
-            SELECT d.documentID, d.title, dt.typeName, r.name as regulatorName
+            SELECT d.documentID, d.title, dt.typeName, r.name as regulatorName, d.summary_ai
             FROM documents d
             JOIN document_types dt ON d.typeID = dt.typeID
             JOIN regulators r ON d.regulatorID = r.regulatorID
