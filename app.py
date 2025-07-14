@@ -104,6 +104,22 @@ def get_financial_services():
     finally:
         if conn is not None:
             conn.close()
+
+@app.route("/api/financial-services/<int:service_id>", methods=['PUT'])
+def update_financial_service(service_id):
+    data = request.get_json()
+    serviceName = data.get('serviceName')
+    conn = None
+    try:
+        conn = psycopg2.connect(**DB_CONFIG)
+        cur = conn.cursor()
+        cur.execute("UPDATE financial_services SET servicename = %s WHERE serviceid = %s;", (serviceName, service_id))
+        conn.commit(); cur.close()
+        return jsonify({"success": True, "message": "Financial service updated."})
+    except (Exception, psycopg2.DatabaseError) as error:
+        conn.rollback(); return jsonify({"error": str(error)}), 500
+    finally:
+        if conn is not None: conn.close()
 			
 @app.route("/api/documents/<int:service_id>", methods=['GET'])
 def get_documents_by_service(service_id):
@@ -152,7 +168,92 @@ def get_regulators():
     finally:
         if conn is not None:
             conn.close()
+			
+# === FULL CRUD FOR REGULATORS ===
 
+@app.route("/api/regulators", methods=['POST'])
+def create_financial_service():
+    data = request.get_json()
+    serviceName = data.get('serviceName')
+    description = data.get('description', '') # Description is optional
+
+    if not serviceName:
+        return jsonify({"error": "Service name is required."}), 400
+
+    conn = None
+    try:
+        conn = psycopg2.connect(**DB_CONFIG)
+        cur = conn.cursor()
+        cur.execute("INSERT INTO financial_services (servicename, description) VALUES (%s, %s) RETURNING serviceid;", (serviceName, description))
+        new_id = cur.fetchone()[0]
+        conn.commit()
+        cur.close()
+        return jsonify({"success": True, "new_financial_service": {"serviceID": new_id, "serviceName": serviceName}}), 201
+    except (Exception, psycopg2.DatabaseError) as error:
+        conn.rollback()
+        return jsonify({"error": str(error)}), 500
+    finally:
+        if conn is not None:
+            conn.close()
+
+def create_regulator():
+    data = request.get_json()
+    name = data.get('name')
+    abbreviation = data.get('abbreviation')
+    
+    if not name or not abbreviation:
+        return jsonify({"error": "Name and abbreviation are required."}), 400
+
+    conn = None
+    try:
+        conn = psycopg2.connect(**DB_CONFIG)
+        cur = conn.cursor()
+        cur.execute("INSERT INTO regulators (name, abbreviation) VALUES (%s, %s) RETURNING regulatorid;", (name, abbreviation))
+        new_id = cur.fetchone()[0]
+        conn.commit()
+        cur.close()
+        return jsonify({"success": True, "message": "Regulator created.", "new_regulator": {"regulatorID": new_id, "name": name, "abbreviation": abbreviation}}), 201
+    except (Exception, psycopg2.DatabaseError) as error:
+        conn.rollback()
+        return jsonify({"error": str(error)}), 500
+    finally:
+        if conn is not None:
+            conn.close()
+			
+@app.route("/api/regulators/<int:regulator_id>", methods=['PUT'])
+def update_regulator(regulator_id):
+    data = request.get_json()
+    name = data.get('name')
+    conn = None
+    try:
+        conn = psycopg2.connect(**DB_CONFIG)
+        cur = conn.cursor()
+        cur.execute("UPDATE regulators SET name = %s WHERE regulatorid = %s;", (name, regulator_id))
+        conn.commit()
+        cur.close()
+        return jsonify({"success": True, "message": "Regulator updated."})
+    except (Exception, psycopg2.DatabaseError) as error:
+        conn.rollback(); return jsonify({"error": str(error)}), 500
+    finally:
+        if conn is not None: conn.close()
+		
+@app.route("/api/regulators/<int:regulator_id>", methods=['DELETE'])
+def delete_regulator(regulator_id):
+    conn = None
+    try:
+        conn = psycopg2.connect(**DB_CONFIG)
+        cur = conn.cursor()
+        cur.execute("DELETE FROM regulators WHERE regulatorid = %s;", (regulator_id,))
+        conn.commit()
+        cur.close()
+        return jsonify({"success": True, "message": "Regulator deleted."})
+    except (Exception, psycopg2.DatabaseError) as error:
+        # This will fail if a document is still linked to this regulator
+        conn.rollback(); return jsonify({"error": "Cannot delete: this regulator is linked to existing documents."}), 409
+    finally:
+        if conn is not None: conn.close()	
+		
+# === FULL CRUD FOR DOCUMENT TYPES ===
 @app.route("/api/document-types", methods=['GET'])
 def get_document_types():
     """Endpoint to get all document types for form dropdowns."""
@@ -258,6 +359,22 @@ def get_all_documents():
     finally:
         if conn is not None:
             conn.close()
+			
+@app.route("/api/document-types/<int:type_id>", methods=['PUT'])
+def update_document_type(type_id):
+    data = request.get_json()
+    typeName = data.get('typeName')
+    conn = None
+    try:
+        conn = psycopg2.connect(**DB_CONFIG)
+        cur = conn.cursor()
+        cur.execute("UPDATE document_types SET typename = %s WHERE typeid = %s;", (typeName, type_id))
+        conn.commit(); cur.close()
+        return jsonify({"success": True, "message": "Document type updated."})
+    except (Exception, psycopg2.DatabaseError) as error:
+        conn.rollback(); return jsonify({"error": str(error)}), 500
+    finally:
+        if conn is not None: conn.close()
             
 @app.route("/api/documents/<int:document_id>", methods=['DELETE'])
 def delete_document(document_id):
