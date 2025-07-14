@@ -542,26 +542,28 @@ def get_user_types():
 def register_user():
     """Endpoint for public user registration with profile PDF upload."""
     
-    # 1. Validate form data and file
+    # Check for the file first
     if 'profilePDF' not in request.files:
         return jsonify({"error": "Profile PDF is missing."}), 400
     
     file = request.files['profilePDF']
+
+    # Get form data using request.form instead of request.get_json()
     email = request.form.get('email')
     password = request.form.get('password')
     user_type_id = request.form.get('userTypeID')
 
-    if not all([email, password, user_type_id, file]):
+    if not all([email, password, user_type_id, file.filename]):
         return jsonify({"error": "Email, password, user type, and profile PDF are required."}), 400
-    if not allowed_file(file.filename): # Reusing our helper function
+
+    if not allowed_file(file.filename):
         return jsonify({"error": "Invalid file type for profile."}), 400
 
-    # 2. Save the uploaded profile PDF
+    # The rest of the function logic is the same...
     filename = secure_filename(f"profile_{email}_{file.filename}")
     file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
     file.save(file_path)
 
-    # 3. Save user to the database
     password_hash = generate_password_hash(password)
     public_user_role_id = 3 # 'Public User' role
 
@@ -570,7 +572,6 @@ def register_user():
         conn = psycopg2.connect(**DB_CONFIG)
         cur = conn.cursor()
         
-        # We now store the file path in the 'profiledetails' column
         sql = """
             INSERT INTO users (email, passwordhash, roleid, usertypeid, profiledetails) 
             VALUES (%s, %s, %s, %s, %s);
