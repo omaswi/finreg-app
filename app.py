@@ -57,6 +57,32 @@ def summarize_text(text, max_chunk_size=1024):
 def health_check():
     return jsonify({"status": "ok", "message": "FinReg Portal API is running."})
 
+@app.route("/api/financial-services", methods=['POST'])
+def create_financial_service():
+    data = request.get_json()
+    serviceName = data.get('serviceName')
+    description = data.get('description', '') # Description is optional
+
+    if not serviceName:
+        return jsonify({"error": "Service name is required."}), 400
+
+    conn = None
+    try:
+        conn = psycopg2.connect(**DB_CONFIG)
+        cur = conn.cursor()
+        cur.execute("INSERT INTO financial_services (servicename, description) VALUES (%s, %s) RETURNING serviceid;", (serviceName, description))
+        new_id = cur.fetchone()[0]
+        conn.commit()
+        cur.close()
+        return jsonify({"success": True, "new_financial_service": {"serviceID": new_id, "serviceName": serviceName}}), 201
+    except (Exception, psycopg2.DatabaseError) as error:
+        if conn:
+            conn.rollback()
+        return jsonify({"error": str(error)}), 500
+    finally:
+        if conn is not None:
+            conn.close()
+
 @app.route("/api/financial-services", methods=['GET'])
 def get_financial_services():
     conn = None
@@ -224,8 +250,10 @@ def create_regulator():
     data = request.get_json()
     name = data.get('name')
     abbreviation = data.get('abbreviation')
+    
     if not name or not abbreviation:
         return jsonify({"error": "Name and abbreviation are required."}), 400
+
     conn = None
     try:
         conn = psycopg2.connect(**DB_CONFIG)
@@ -233,12 +261,15 @@ def create_regulator():
         cur.execute("INSERT INTO regulators (name, abbreviation) VALUES (%s, %s) RETURNING regulatorid;", (name, abbreviation))
         new_id = cur.fetchone()[0]
         conn.commit()
-        return jsonify({"success": True, "new_regulator": {"regulatorID": new_id, "name": name, "abbreviation": abbreviation}}), 201
-    except Exception as e:
-        if conn: conn.rollback()
-        return jsonify({"error": str(e)}), 500
+        cur.close()
+        return jsonify({"success": True, "message": "Regulator created.", "new_regulator": {"regulatorID": new_id, "name": name, "abbreviation": abbreviation}}), 201
+    except (Exception, psycopg2.DatabaseError) as error:
+        if conn:
+            conn.rollback()
+        return jsonify({"error": str(error)}), 500
     finally:
-        if conn: conn.close()
+        if conn is not None:
+            conn.close()
 
 @app.route("/api/regulators/<int:regulator_id>", methods=['DELETE'])
 def delete_regulator(regulator_id):
