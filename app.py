@@ -30,6 +30,10 @@ CORS(app, resources={r"/api/*": {"origins": "*"}})
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
+# --- HELPER FUNCTIONS ---
+def get_db_connection():
+    return psycopg2.connect(**DB_CONFIG)
+
 def extract_text_from_pdf(file_stream):
     try:
         pdf_reader = PyPDF2.PdfReader(file_stream)
@@ -68,7 +72,7 @@ def create_financial_service():
 
     conn = None
     try:
-        conn = psycopg2.connect(**DB_CONFIG)
+        conn = get_db_connection()
         cur = conn.cursor()
         cur.execute("INSERT INTO financial_services (servicename, description) VALUES (%s, %s) RETURNING serviceid;", (serviceName, description))
         new_id = cur.fetchone()[0]
@@ -91,7 +95,7 @@ def update_financial_service(service_id):
         return jsonify({"error": "serviceName is required"}), 400
     conn = None
     try:
-        conn = psycopg2.connect(**DB_CONFIG)
+        conn = get_db_connection()
         cur = conn.cursor()
         cur.execute("UPDATE financial_services SET servicename = %s WHERE serviceid = %s;", (serviceName, service_id))
         conn.commit()
@@ -107,7 +111,7 @@ def update_financial_service(service_id):
 def delete_financial_service(service_id):
     conn = None
     try:
-        conn = psycopg2.connect(**DB_CONFIG)
+        conn = get_db_connection()
         cur = conn.cursor()
         cur.execute("DELETE FROM financial_services WHERE serviceid = %s;", (service_id,))
         conn.commit()
@@ -126,7 +130,7 @@ def delete_financial_service(service_id):
 def get_financial_services():
     conn = None
     try:
-        conn = psycopg2.connect(**DB_CONFIG)
+        conn = get_db_connection()
         cur = conn.cursor()
         cur.execute("SELECT serviceid, servicename, description FROM financial_services ORDER BY servicename;")
         data = cur.fetchall()
@@ -141,7 +145,7 @@ def get_financial_services():
 def get_documents_by_service(service_id):
     conn = None
     try:
-        conn = psycopg2.connect(**DB_CONFIG)
+        conn = get_db_connection()
         cur = conn.cursor()
         sql = """
             SELECT d.documentid, d.title, dt.typename, r.name as regulatorname, d.summary_ai
@@ -164,7 +168,7 @@ def get_documents_by_service(service_id):
 def download_document(document_id):
     conn = None
     try:
-        conn = psycopg2.connect(**DB_CONFIG)
+        conn = get_db_connection()
         cur = conn.cursor()
         cur.execute("SELECT fileurl FROM documents WHERE documentid = %s;", (document_id,))
         result = cur.fetchone()
@@ -187,7 +191,7 @@ def chatbot_query():
     if not user_query: return jsonify({"answer": "Please ask a question."})
     conn = None
     try:
-        conn = psycopg2.connect(**DB_CONFIG)
+        conn = get_db_connection()
         cur = conn.cursor()
         cur.execute("SELECT question, answer FROM faqs;")
         all_faqs = cur.fetchall()
@@ -229,7 +233,7 @@ def register_user():
 
     conn = None
     try:
-        conn = psycopg2.connect(**DB_CONFIG)
+        conn = get_db_connection()
         cur = conn.cursor()
         sql = "INSERT INTO users (email, passwordhash, roleid, usertypeid, profiledetails) VALUES (%s, %s, %s, %s, %s);"
         cur.execute(sql, (email, password_hash, public_user_role_id, user_type_id, file_path))
@@ -252,7 +256,7 @@ def login():
     if not email or not password: return jsonify({"error": "Email and password are required."}), 400
     conn = None
     try:
-        conn = psycopg2.connect(**DB_CONFIG)
+        conn = get_db_connection()
         cur = conn.cursor()
         sql = "SELECT u.passwordhash, r.rolename, u.userid FROM users u JOIN roles r ON u.roleid = r.roleid WHERE u.email = %s AND u.is_archived = FALSE;"
         cur.execute(sql, (email,))
@@ -395,7 +399,7 @@ def admin_delete_user(user_id):
 def get_regulators():
     conn = None
     try:
-        conn = psycopg2.connect(**DB_CONFIG)
+        conn = get_db_connection()
         cur = conn.cursor()
         cur.execute("SELECT regulatorid, name, abbreviation FROM regulators ORDER BY name;")
         data = cur.fetchall()
@@ -417,7 +421,7 @@ def create_regulator():
 
     conn = None
     try:
-        conn = psycopg2.connect(**DB_CONFIG)
+        conn = get_db_connection()
         cur = conn.cursor()
         cur.execute("INSERT INTO regulators (name, abbreviation) VALUES (%s, %s) RETURNING regulatorid;", (name, abbreviation))
         new_id = cur.fetchone()[0]
@@ -443,7 +447,7 @@ def update_regulator(regulator_id):
 
     conn = None
     try:
-        conn = psycopg2.connect(**DB_CONFIG)
+        conn = get_db_connection()
         cur = conn.cursor()
         cur.execute("UPDATE regulators SET name = %s, abbreviation = %s WHERE regulatorid = %s;", (name, abbreviation, regulator_id))
         conn.commit()
@@ -459,7 +463,7 @@ def update_regulator(regulator_id):
 def delete_regulator(regulator_id):
     conn = None
     try:
-        conn = psycopg2.connect(**DB_CONFIG)
+        conn = get_db_connection()
         cur = conn.cursor()
         cur.execute("DELETE FROM regulators WHERE regulatorid = %s;", (regulator_id,))
         conn.commit()
@@ -478,7 +482,7 @@ def delete_regulator(regulator_id):
 def get_document_types():
     conn = None
     try:
-        conn = psycopg2.connect(**DB_CONFIG)
+        conn = get_db_connection()
         cur = conn.cursor()
         cur.execute("SELECT typeid, typename FROM document_types ORDER BY typename;")
         data = cur.fetchall()
@@ -496,7 +500,7 @@ def create_document_type():
     if not typeName: return jsonify({"error": "typeName is required"}), 400
     conn = None
     try:
-        conn = psycopg2.connect(**DB_CONFIG)
+        conn = get_db_connection()
         cur = conn.cursor()
         cur.execute("INSERT INTO document_types (typename) VALUES (%s) RETURNING typeid;", (typeName,))
         new_id = cur.fetchone()[0]
@@ -516,7 +520,7 @@ def update_document_type(type_id):
         return jsonify({"error": "typeName is required"}), 400
     conn = None
     try:
-        conn = psycopg2.connect(**DB_CONFIG)
+        conn = get_db_connection()
         cur = conn.cursor()
         cur.execute("UPDATE document_types SET typename = %s WHERE typeid = %s;", (typeName, type_id))
         conn.commit()
@@ -533,7 +537,7 @@ def delete_document_type(type_id):
     """Performs a SOFT DELETE by archiving the document."""
     conn = None
     try:
-        conn = psycopg2.connect(**DB_CONFIG)
+        conn = get_db_connection()
         cur = conn.cursor()
         cur.execute("DELETE FROM document_types WHERE typeid = %s;", (type_id,))
         conn.commit()
@@ -553,7 +557,7 @@ def delete_document_type(type_id):
 def get_user_types():
     conn = None
     try:
-        conn = psycopg2.connect(**DB_CONFIG)
+        conn = get_db_connection()
         cur = conn.cursor()
         cur.execute("SELECT usertypeid, typename FROM user_types ORDER BY typename;")
         data = cur.fetchall()
@@ -575,7 +579,7 @@ def create_user_type():
 
     conn = None
     try:
-        conn = psycopg2.connect(**DB_CONFIG)
+        conn = get_db_connection()
         cur = conn.cursor()
         
         sql = "INSERT INTO user_types (typename) VALUES (%s) RETURNING usertypeid;"
@@ -607,7 +611,7 @@ def update_user_type(user_type_id):
         return jsonify({"error": "typeName is required"}), 400
     conn = None
     try:
-        conn = psycopg2.connect(**DB_CONFIG)
+        conn = get_db_connection()
         cur = conn.cursor()
         cur.execute("UPDATE user_types SET typename = %s WHERE usertypeid = %s;", (typeName, user_type_id))
         conn.commit()
@@ -623,7 +627,7 @@ def update_user_type(user_type_id):
 def delete_user_type(user_type_id):
     conn = None
     try:
-        conn = psycopg2.connect(**DB_CONFIG)
+        conn = get_db_connection()
         cur = conn.cursor()
         cur.execute("DELETE FROM user_types WHERE usertypeid = %s;", (user_type_id,))
         conn.commit()
@@ -643,7 +647,7 @@ def delete_user_type(user_type_id):
 def get_all_documents():
     conn = None
     try:
-        conn = psycopg2.connect(**DB_CONFIG)
+        conn = get_db_connection()
         cur = conn.cursor()
         cur.execute("SELECT documentid, title FROM documents ORDER BY title;")
         data = cur.fetchall()
@@ -675,7 +679,7 @@ def create_document():
 
     conn = None
     try:
-        conn = psycopg2.connect(**DB_CONFIG)
+        conn = get_db_connection()
         cur = conn.cursor()
         cur.execute("SELECT regulatorid FROM users WHERE userid = %s;", (uploader_id,))
         result = cur.fetchone()
@@ -706,7 +710,7 @@ def update_document(document_id):
         return jsonify({"error": "Title is required"}), 400
     conn = None
     try:
-        conn = psycopg2.connect(**DB_CONFIG)
+        conn = get_db_connection()
         cur = conn.cursor()
         cur.execute("UPDATE documents SET title = %s WHERE documentid = %s;", (title, document_id))
         conn.commit()
@@ -722,10 +726,9 @@ def update_document(document_id):
 def delete_document(document_id):
     conn = None
     try:
-        conn = psycopg2.connect(**DB_CONFIG)
+        conn = get_db_connection()
         cur = conn.cursor()        
         cur.execute("UPDATE documents SET is_archived = TRUE WHERE documentid = %s;", (document_id,))
-        cur.execute("DELETE FROM documents WHERE documentid = %s;", (document_id,))
         conn.commit()
         return jsonify({"success": True, "message": f"Document {document_id} deleted."})
     except Exception as e:
@@ -739,7 +742,7 @@ def delete_document(document_id):
 def get_all_faqs():
     conn = None
     try:
-        conn = psycopg2.connect(**DB_CONFIG)
+        conn = get_db_connection()
         cur = conn.cursor()
         cur.execute("SELECT faqid, question, answer FROM faqs ORDER BY question;")
         data = cur.fetchall()
@@ -758,7 +761,7 @@ def create_faq():
     if not question or not answer: return jsonify({"error": "Question and answer are required."}), 400
     conn = None
     try:
-        conn = psycopg2.connect(**DB_CONFIG)
+        conn = get_db_connection()
         cur = conn.cursor()
         cur.execute("INSERT INTO faqs (question, answer) VALUES (%s, %s) RETURNING faqid;", (question, answer))
         new_id = cur.fetchone()[0]
@@ -779,7 +782,7 @@ def update_faq(faq_id):
         return jsonify({"error": "Question and answer are required"}), 400
     conn = None
     try:
-        conn = psycopg2.connect(**DB_CONFIG)
+        conn = get_db_connection()
         cur = conn.cursor()
         cur.execute("UPDATE faqs SET question = %s, answer = %s WHERE faqid = %s;", (question, answer, faq_id))
         conn.commit()
@@ -795,7 +798,7 @@ def update_faq(faq_id):
 def delete_faq(faq_id):
     conn = None
     try:
-        conn = psycopg2.connect(**DB_CONFIG)
+        conn = get_db_connection()
         cur = conn.cursor()
         cur.execute("DELETE FROM faqs WHERE faqid = %s;", (faq_id,))
         conn.commit()
@@ -812,7 +815,7 @@ def delete_faq(faq_id):
 def get_user_subscriptions(user_id):
     conn = None
     try:
-        conn = psycopg2.connect(**DB_CONFIG)
+        conn = get_db_connection()
         cur = conn.cursor()
         cur.execute("SELECT serviceid FROM subscriptions WHERE userid = %s;", (user_id,))
         subscribed_ids = [row[0] for row in cur.fetchall()]
@@ -828,7 +831,7 @@ def update_user_subscriptions(user_id):
     service_ids = data.get('serviceIDs', [])
     conn = None
     try:
-        conn = psycopg2.connect(**DB_CONFIG)
+        conn = get_db_connection()
         cur = conn.cursor()
         cur.execute("DELETE FROM subscriptions WHERE userid = %s;", (user_id,))
         if service_ids:
