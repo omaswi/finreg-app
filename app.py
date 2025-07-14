@@ -64,25 +64,44 @@ def health_check():
     return jsonify({"status": "ok", "message": "FinReg Portal API is running."})
 	
 @app.route("/api/login", methods=['POST'])
-def admin_login():
+def login():
+    """Handles login for all user roles."""
     data = request.get_json()
     email = data.get('email')
-    if not email:
-        return jsonify({"error": "Email is required."}), 400
+    password = data.get('password')
+
+    if not email or not password:
+        return jsonify({"error": "Email and password are required."}), 400
+
     conn = None
     try:
         conn = psycopg2.connect(**DB_CONFIG)
         cur = conn.cursor()
-        sql_query = "SELECT u.email FROM users u JOIN roles r ON u.roleID = r.roleID WHERE u.email = %s AND r.roleName = 'Administrator';"
-        cur.execute(sql_query, (email,))
-        admin_user = cur.fetchone()
-        cur.close()
-        if admin_user:
-            return jsonify({"success": True, "message": "Login successful."})
+
+        # Get the user's stored hash and role
+        sql = """
+            SELECT u.passwordhash, r.rolename, u.userid 
+            FROM users u 
+            JOIN roles r ON u.roleid = r.roleid 
+            WHERE u.email = %s;
+        """
+        cur.execute(sql, (email,))
+        user_data = cur.fetchone()
+
+        if user_data and check_password_hash(user_data[0], password):
+            # Password matches, login is successful
+            return jsonify({
+                "success": True, 
+                "message": "Login successful.",
+                "role": user_data[1], # e.g., 'Administrator' or 'Public User'
+                "userID": user_data[2]
+            })
         else:
-            return jsonify({"error": "Invalid credentials or not an administrator."}), 401
+            # User not found or password does not match
+            return jsonify({"error": "Invalid email or password."}), 401
+
     except (Exception, psycopg2.DatabaseError) as error:
-        return jsonify({"error": f"Database error: {error}"}), 500
+        return jsonify({"error": f"Database error: {str(error)}"}), 500
     finally:
         if conn is not None:
             conn.close()
