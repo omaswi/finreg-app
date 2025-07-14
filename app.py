@@ -254,7 +254,7 @@ def login():
     try:
         conn = psycopg2.connect(**DB_CONFIG)
         cur = conn.cursor()
-        sql = "SELECT u.passwordhash, r.rolename, u.userid FROM users u JOIN roles r ON u.roleid = r.roleid WHERE u.email = %s;"
+        sql = "SELECT u.passwordhash, r.rolename, u.userid FROM users u JOIN roles r ON u.roleid = r.roleid WHERE u.email = %s AND u.is_archived = FALSE;"
         cur.execute(sql, (email,))
         user_data = cur.fetchone()
         if user_data and check_password_hash(user_data[0], password):
@@ -267,6 +267,128 @@ def login():
         if conn: conn.close()
 
 # === ADMIN-ONLY CRUD ENDPOINTS ===
+
+@app.route("/api/roles", methods=['GET'])
+def get_roles():
+    """Endpoint to fetch all available user roles."""
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT roleid, rolename FROM roles ORDER BY rolename;")
+        roles = [{"roleID": row[0], "roleName": row[1]} for row in cur.fetchall()]
+        return jsonify(roles)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        if conn: conn.close()
+
+@app.route("/api/admin/users", methods=['GET'])
+def admin_get_users():
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        # Join with roles and regulators to get names
+        sql = """
+            SELECT u.userid, u.email, r.roleid, r.rolename, reg.regulatorid, reg.name as regulatorname
+            FROM users u
+            JOIN roles r ON u.roleid = r.roleid
+            LEFT JOIN regulators reg ON u.regulatorid = reg.regulatorid
+            WHERE u.is_archived = FALSE
+            ORDER BY u.email;
+        """
+        cur.execute(sql)
+        users = [
+            {"userID": row[0], "email": row[1], "roleID": row[2], "roleName": row[3], "regulatorID": row[4], "regulatorName": row[5]}
+            for row in cur.fetchall()
+        ]
+        return jsonify(users)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        if conn: conn.close()
+
+@app.route("/api/admin/users", methods=['POST'])
+def admin_create_user():
+    data = request.get_json()
+    email = data.get('email')
+    password = data.get('password')
+    role_id = data.get('roleID')
+    regulator_id = data.get('regulatorID') # Can be None
+
+    if not email or not password or not role_id:
+        return jsonify({"error": "Email, password, and role are required."}), 400
+    
+    password_hash = generate_password_hash(password)
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        sql = """
+            INSERT INTO users (email, passwordhash, roleid, regulatorid)
+            VALUES (%s, %s, %s, %s) RETURNING userid;
+        """
+        cur.execute(sql, (email, password_hash, role_id, regulator_id))
+        new_id = cur.fetchone()[0]
+        conn.commit()
+        return jsonify({"success": True, "message": "User created", "userID": new_id}), 201
+    except psycopg2.IntegrityError:
+        conn.rollback()
+        return jsonify({"error": "A user with this email already exists."}), 409
+    except Exception as e:
+        if conn: conn.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        if conn: conn.close()
+
+@app.route("/api/admin/users/<int:user_id>", methods=['PUT'])
+def admin_update_user(user_id):
+    data = request.get_json()
+    email = data.get('email')
+    role_id = data.get('roleID')
+    regulator_id = data.get('regulatorID')
+    password = data.get('password') # Optional
+
+    if not email or not role_id:
+        return jsonify({"error": "Email and role are required."}), 400
+
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        if password:
+            # If password is provided, update it
+            password_hash = generate_password_hash(password)
+            sql = """
+                UPDATE users SET email = %s, roleid = %s, regulatorid = %s, passwordhash = %s
+                WHERE userid = %s;
+            """
+            cur.execute(sql, (email, role_id, regulator_id, password_hash, user_id))
+        else:
+            # Otherwise, don't update the password
+            sql = "UPDATE users SET email = %s, roleid = %s, regulatorid = %s WHERE userid = %s;"
+            cur.execute(sql, (email, role_id, regulator_id, user_id))
+        
+        conn.commit()
+        return jsonify({"success": True, "message": "User updated."})
+    except Exception as e:
+        if conn: conn.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        if conn: conn.close()
+
+@app.route("/api/admin/users/<int:user_id>", methods=['DELETE'])
+def admin_delete_user(user_id):
+    """Performs a SOFT DELETE by archiving the user."""
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        # Set the is_archived flag to TRUE instead of deleting the row
+        cur.execute("UPDATE users SET is_archived = TRUE WHERE userid = %s;", (user_id,))
+        conn.commit()
+        return jsonify({"success": True, "message": "User archived successfully."})
+    except Exception as e:
+        if conn: conn.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        if conn: conn.close()
 
 # --- Regulators ---
 @app.route("/api/regulators", methods=['GET'])
@@ -408,6 +530,7 @@ def update_document_type(type_id):
 
 @app.route("/api/document-types/<int:type_id>", methods=['DELETE'])
 def delete_document_type(type_id):
+    """Performs a SOFT DELETE by archiving the document."""
     conn = None
     try:
         conn = psycopg2.connect(**DB_CONFIG)
@@ -415,7 +538,7 @@ def delete_document_type(type_id):
         cur.execute("DELETE FROM document_types WHERE typeid = %s;", (type_id,))
         conn.commit()
         cur.close()
-        return jsonify({"success": True})
+        return jsonify({"success": True, "message": "Document archived successfully."})
     except psycopg2.IntegrityError:
         conn.rollback()
         return jsonify({"error": "Cannot delete: this type is linked to existing documents."}), 409
@@ -600,8 +723,8 @@ def delete_document(document_id):
     conn = None
     try:
         conn = psycopg2.connect(**DB_CONFIG)
-        cur = conn.cursor()
-        cur.execute("DELETE FROM document_services WHERE documentid = %s;", (document_id,))
+        cur = conn.cursor()        
+        cur.execute("UPDATE documents SET is_archived = TRUE WHERE documentid = %s;", (document_id,))
         cur.execute("DELETE FROM documents WHERE documentid = %s;", (document_id,))
         conn.commit()
         return jsonify({"success": True, "message": f"Document {document_id} deleted."})
@@ -714,6 +837,68 @@ def update_user_subscriptions(user_id):
             cur.executemany("INSERT INTO subscriptions (userid, serviceid) VALUES (%s, %s);", args_list)
         conn.commit()
         return jsonify({"success": True, "message": "Subscriptions updated successfully."})
+    except Exception as e:
+        if conn: conn.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        if conn: conn.close()
+
+# === IT ADMIN ARCHIVE & RESTORE ENDPOINTS ===
+
+@app.route("/api/admin/archive/users", methods=['GET'])
+def get_archived_users():
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        sql = """
+            SELECT u.userid, u.email, r.rolename
+            FROM users u
+            JOIN roles r ON u.roleid = r.roleid
+            WHERE u.is_archived = TRUE ORDER BY u.email;
+        """
+        cur.execute(sql)
+        users = [{"userID": row[0], "email": row[1], "roleName": row[2]} for row in cur.fetchall()]
+        return jsonify(users)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        if conn: conn.close()
+
+@app.route("/api/admin/archive/documents", methods=['GET'])
+def get_archived_documents():
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT documentid, title FROM documents WHERE is_archived = TRUE ORDER BY title;")
+        docs = [{"documentID": row[0], "title": row[1]} for row in cur.fetchall()]
+        return jsonify(docs)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        if conn: conn.close()
+
+@app.route("/api/admin/restore/user/<int:user_id>", methods=['POST'])
+def restore_user(user_id):
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute("UPDATE users SET is_archived = FALSE WHERE userid = %s;", (user_id,))
+        conn.commit()
+        return jsonify({"success": True, "message": "User restored."})
+    except Exception as e:
+        if conn: conn.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        if conn: conn.close()
+
+@app.route("/api/admin/restore/document/<int:document_id>", methods=['POST'])
+def restore_document(document_id):
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute("UPDATE documents SET is_archived = FALSE WHERE documentid = %s;", (document_id,))
+        conn.commit()
+        return jsonify({"success": True, "message": "Document restored."})
     except Exception as e:
         if conn: conn.rollback()
         return jsonify({"error": str(e)}), 500
