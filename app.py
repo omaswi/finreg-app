@@ -83,6 +83,45 @@ def create_financial_service():
         if conn is not None:
             conn.close()
 
+@app.route("/api/financial-services/<int:service_id>", methods=['PUT'])
+def update_financial_service(service_id):
+    data = request.get_json()
+    serviceName = data.get('serviceName')
+    if not serviceName:
+        return jsonify({"error": "serviceName is required"}), 400
+    conn = None
+    try:
+        conn = psycopg2.connect(**DB_CONFIG)
+        cur = conn.cursor()
+        cur.execute("UPDATE financial_services SET servicename = %s WHERE serviceid = %s;", (serviceName, service_id))
+        conn.commit()
+        cur.close()
+        return jsonify({"success": True, "message": "Financial service updated."})
+    except Exception as e:
+        if conn: conn.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        if conn: conn.close()
+
+@app.route("/api/financial-services/<int:service_id>", methods=['DELETE'])
+def delete_financial_service(service_id):
+    conn = None
+    try:
+        conn = psycopg2.connect(**DB_CONFIG)
+        cur = conn.cursor()
+        cur.execute("DELETE FROM financial_services WHERE serviceid = %s;", (service_id,))
+        conn.commit()
+        cur.close()
+        return jsonify({"success": True})
+    except psycopg2.IntegrityError:
+        conn.rollback()
+        return jsonify({"error": "Cannot delete: this service is linked to existing documents."}), 409
+    except Exception as e:
+        if conn: conn.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        if conn: conn.close()
+
 @app.route("/api/financial-services", methods=['GET'])
 def get_financial_services():
     conn = None
@@ -271,6 +310,29 @@ def create_regulator():
         if conn is not None:
             conn.close()
 
+@app.route("/api/regulators/<int:regulator_id>", methods=['PUT'])
+def update_regulator(regulator_id):
+    data = request.get_json()
+    name = data.get('name')
+    abbreviation = data.get('abbreviation')
+
+    if not name or not abbreviation:
+        return jsonify({"error": "Both name and abbreviation are required."}), 400
+
+    conn = None
+    try:
+        conn = psycopg2.connect(**DB_CONFIG)
+        cur = conn.cursor()
+        cur.execute("UPDATE regulators SET name = %s, abbreviation = %s WHERE regulatorid = %s;", (name, abbreviation, regulator_id))
+        conn.commit()
+        cur.close()
+        return jsonify({"success": True, "message": "Regulator updated."})
+    except Exception as e:
+        if conn: conn.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        if conn: conn.close()
+
 @app.route("/api/regulators/<int:regulator_id>", methods=['DELETE'])
 def delete_regulator(regulator_id):
     conn = None
@@ -324,6 +386,45 @@ def create_document_type():
     finally:
         if conn: conn.close()
 
+@app.route("/api/document-types/<int:type_id>", methods=['PUT'])
+def update_document_type(type_id):
+    data = request.get_json()
+    typeName = data.get('typeName')
+    if not typeName:
+        return jsonify({"error": "typeName is required"}), 400
+    conn = None
+    try:
+        conn = psycopg2.connect(**DB_CONFIG)
+        cur = conn.cursor()
+        cur.execute("UPDATE document_types SET typename = %s WHERE typeid = %s;", (typeName, type_id))
+        conn.commit()
+        cur.close()
+        return jsonify({"success": True, "message": "Document type updated."})
+    except Exception as e:
+        if conn: conn.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        if conn: conn.close()
+
+@app.route("/api/document-types/<int:type_id>", methods=['DELETE'])
+def delete_document_type(type_id):
+    conn = None
+    try:
+        conn = psycopg2.connect(**DB_CONFIG)
+        cur = conn.cursor()
+        cur.execute("DELETE FROM document_types WHERE typeid = %s;", (type_id,))
+        conn.commit()
+        cur.close()
+        return jsonify({"success": True})
+    except psycopg2.IntegrityError:
+        conn.rollback()
+        return jsonify({"error": "Cannot delete: this type is linked to existing documents."}), 409
+    except Exception as e:
+        if conn: conn.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        if conn: conn.close()
+
 # --- User Types ---
 @app.route("/api/user-types", methods=['GET'])
 def get_user_types():
@@ -336,6 +437,80 @@ def get_user_types():
         data_list = [{"userTypeID": row[0], "typeName": row[1]} for row in data]
         return jsonify(data_list)
     except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        if conn: conn.close()
+
+@app.route("/api/user-types", methods=['POST'])
+def create_user_type():
+    """Admin endpoint to create a new user type."""
+    data = request.get_json()
+    typeName = data.get('typeName')
+
+    if not typeName:
+        return jsonify({"error": "typeName is required."}), 400
+
+    conn = None
+    try:
+        conn = psycopg2.connect(**DB_CONFIG)
+        cur = conn.cursor()
+        
+        sql = "INSERT INTO user_types (typename) VALUES (%s) RETURNING usertypeid;"
+        cur.execute(sql, (typeName,))
+        new_id = cur.fetchone()[0]
+        
+        conn.commit()
+        cur.close()
+        
+        return jsonify({"success": True, "new_user_type": {"userTypeID": new_id, "typeName": typeName}}), 201
+
+    except psycopg2.IntegrityError:
+        # This error occurs if the typeName (which is UNIQUE) already exists
+        conn.rollback()
+        return jsonify({"error": "This user type already exists."}), 409
+    except (Exception, psycopg2.DatabaseError) as error:
+        if conn:
+            conn.rollback()
+        return jsonify({"error": str(error)}), 500
+    finally:
+        if conn is not None:
+            conn.close()
+
+@app.route("/api/user-types/<int:user_type_id>", methods=['PUT'])
+def update_user_type(user_type_id):
+    data = request.get_json()
+    typeName = data.get('typeName')
+    if not typeName:
+        return jsonify({"error": "typeName is required"}), 400
+    conn = None
+    try:
+        conn = psycopg2.connect(**DB_CONFIG)
+        cur = conn.cursor()
+        cur.execute("UPDATE user_types SET typename = %s WHERE usertypeid = %s;", (typeName, user_type_id))
+        conn.commit()
+        cur.close()
+        return jsonify({"success": True, "message": "User type updated."})
+    except Exception as e:
+        if conn: conn.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        if conn: conn.close()
+
+@app.route("/api/user-types/<int:user_type_id>", methods=['DELETE'])
+def delete_user_type(user_type_id):
+    conn = None
+    try:
+        conn = psycopg2.connect(**DB_CONFIG)
+        cur = conn.cursor()
+        cur.execute("DELETE FROM user_types WHERE usertypeid = %s;", (user_type_id,))
+        conn.commit()
+        cur.close()
+        return jsonify({"success": True})
+    except psycopg2.IntegrityError:
+        conn.rollback()
+        return jsonify({"error": "Cannot delete: this type is linked to existing users."}), 409
+    except Exception as e:
+        if conn: conn.rollback()
         return jsonify({"error": str(e)}), 500
     finally:
         if conn: conn.close()
@@ -400,6 +575,26 @@ def create_document():
     finally:
         if conn: conn.close()
 
+@app.route("/api/documents/<int:document_id>", methods=['PUT'])
+def update_document(document_id):
+    data = request.get_json()
+    title = data.get('title')
+    if not title:
+        return jsonify({"error": "Title is required"}), 400
+    conn = None
+    try:
+        conn = psycopg2.connect(**DB_CONFIG)
+        cur = conn.cursor()
+        cur.execute("UPDATE documents SET title = %s WHERE documentid = %s;", (title, document_id))
+        conn.commit()
+        cur.close()
+        return jsonify({"success": True, "message": "Document updated."})
+    except Exception as e:
+        if conn: conn.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        if conn: conn.close()
+
 @app.route("/api/documents/<int:document_id>", methods=['DELETE'])
 def delete_document(document_id):
     conn = None
@@ -446,6 +641,27 @@ def create_faq():
         new_id = cur.fetchone()[0]
         conn.commit()
         return jsonify({"success": True, "new_faq": {"faqID": new_id, "question": question}}), 201
+    except Exception as e:
+        if conn: conn.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        if conn: conn.close()
+
+@app.route("/api/faqs/<int:faq_id>", methods=['PUT'])
+def update_faq(faq_id):
+    data = request.get_json()
+    question = data.get('question')
+    answer = data.get('answer')
+    if not question or not answer:
+        return jsonify({"error": "Question and answer are required"}), 400
+    conn = None
+    try:
+        conn = psycopg2.connect(**DB_CONFIG)
+        cur = conn.cursor()
+        cur.execute("UPDATE faqs SET question = %s, answer = %s WHERE faqid = %s;", (question, answer, faq_id))
+        conn.commit()
+        cur.close()
+        return jsonify({"success": True, "message": "FAQ updated."})
     except Exception as e:
         if conn: conn.rollback()
         return jsonify({"error": str(e)}), 500
