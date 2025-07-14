@@ -4,7 +4,8 @@ import os
 import psycopg2
 from flask import Flask, jsonify, request
 from flask_cors import CORS
-from werkzeug.utils import secure_filename # New import for file handling
+from werkzeug.utils import secure_filename 
+from werkzeug.security import generate_password_hash, check_password_hash
 import PyPDF2 # New import for reading PDFs
 from transformers import pipeline # New import for AI model
 
@@ -496,6 +497,48 @@ def delete_faq(faq_id):
     except (Exception, psycopg2.DatabaseError) as error:
         conn.rollback()
         return jsonify({"error": str(error)}), 500
+    finally:
+        if conn is not None:
+            conn.close()
+
+@app.route("/api/register", methods=['POST'])
+def register_user():
+    """Endpoint for public user registration."""
+    data = request.get_json()
+    email = data.get('email')
+    password = data.get('password')
+
+    if not email or not password:
+        return jsonify({"error": "Email and password are required."}), 400
+
+    # Securely hash the password before storing it
+    password_hash = generate_password_hash(password)
+
+    # Get the roleID for 'Public User'
+    # In a real app, this might be cached instead of queried every time
+    public_user_role_id = 3 # Assuming 'Public User' has roleID = 3
+
+    conn = None
+    try:
+        conn = psycopg2.connect(**DB_CONFIG)
+        cur = conn.cursor()
+
+        # Insert the new user with the 'Public User' role
+        sql = "INSERT INTO users (email, passwordhash, roleid) VALUES (%s, %s, %s);"
+        cur.execute(sql, (email, password_hash, public_user_role_id))
+
+        conn.commit()
+        cur.close()
+
+        return jsonify({"success": True, "message": "User registered successfully."}), 201
+
+    except psycopg2.IntegrityError:
+        # This error occurs if the email (which is UNIQUE) already exists
+        conn.rollback()
+        return jsonify({"error": "This email address is already registered."}), 409
+    except (Exception, psycopg2.DatabaseError) as error:
+        conn.rollback()
+        return jsonify({"error": f"Database error: {str(error)}"}), 500
     finally:
         if conn is not None:
             conn.close()
