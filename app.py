@@ -279,53 +279,50 @@ def create_document():
     # For this prototype, we'll assume the admin with userID=1 is logged in.
     uploader_id = 1
 
-    # 1. Validate the incoming request and file
-    if 'file' not in request.files:
-        return jsonify({"error": "No file part"}), 400
-    file = request.files['file']
-    if file.filename == '':
-        return jsonify({"error": "No selected file"}), 400
-    if not allowed_file(file.filename):
-        return jsonify({"error": "File type not allowed"}), 400
-
-    # 2. Extract metadata from the form
-    title = request.form.get('title')
-    type_id = request.form.get('typeID')
-    service_ids = request.form.getlist('serviceIDs[]')
-
-    # 3. Process the file to get text and AI summary
-    text_content = ""
-    if file.filename.lower().endswith('.pdf'):
-        text_content = extract_text_from_pdf(file)
-    ai_summary = summarize_text(text_content)
-    
-    # Rewind the file stream before saving
-    file.seek(0)
-    
-    # 4. Save the file
-    filename = secure_filename(file.filename)
-    file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-    file.save(file_path)
-
-    # 5. Save everything to the database
     conn = None
     try:
+        # 1. Get the admin's associated regulatorID from the database
         conn = psycopg2.connect(**DB_CONFIG)
         cur = conn.cursor()
-
-        # Get the admin's associated regulator ID
         cur.execute("SELECT regulatorid FROM users WHERE userid = %s;", (uploader_id,))
         result = cur.fetchone()
+        
         if not result or result[0] is None:
             return jsonify({"error": "Admin user is not associated with a regulator."}), 403
         admin_regulator_id = result[0]
 
-        # Insert document metadata into the 'documents' table
+        # 2. Validate the incoming request and file
+        if 'file' not in request.files:
+            return jsonify({"error": "No file part"}), 400
+        file = request.files['file']
+        if file.filename == '':
+            return jsonify({"error": "No selected file"}), 400
+        if not allowed_file(file.filename):
+            return jsonify({"error": "File type not allowed"}), 400
+
+        # 3. Extract metadata from the form
+        title = request.form.get('title')
+        type_id = request.form.get('typeID')
+        service_ids = request.form.getlist('serviceIDs[]')
+
+        # 4. Process file for AI summary
+        text_content = ""
+        if file.filename.lower().endswith('.pdf'):
+            text_content = extract_text_from_pdf(file)
+        ai_summary = summarize_text(text_content)
+        file.seek(0) # Rewind file after reading it
+
+        # 5. Save the file
+        filename = secure_filename(file.filename)
+        file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        file.save(file_path)
+
+        # 6. Save metadata to database, using the admin's regulatorID automatically
         sql_doc = "INSERT INTO documents (title, regulatorid, typeid, fileurl, uploadedby, summary_ai) VALUES (%s, %s, %s, %s, %s, %s) RETURNING documentid;"
         cur.execute(sql_doc, (title, admin_regulator_id, type_id, file_path, uploader_id, ai_summary))
         new_doc_id = cur.fetchone()[0]
 
-        # Link the new document to the selected financial services
+        # 7. Link the new document to the selected financial services
         for service_id in service_ids:
             sql_junction = "INSERT INTO document_services (documentid, serviceid) VALUES (%s, %s);"
             cur.execute(sql_junction, (new_doc_id, service_id))
@@ -333,10 +330,11 @@ def create_document():
         conn.commit()
         cur.close()
         
-        return jsonify({"success": True, "message": "File uploaded successfully.", "new_document": {"documentID": new_doc_id, "title": title}}), 201
+        return jsonify({"success": True, "message": "File uploaded successfully."}), 201
 
     except (Exception, psycopg2.DatabaseError) as error:
-        conn.rollback()
+        if conn:
+            conn.rollback()
         return jsonify({"error": f"Database error: {str(error)}"}), 500
     finally:
         if conn is not None:
