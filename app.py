@@ -2,7 +2,7 @@
 
 import os
 import psycopg2
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 from werkzeug.utils import secure_filename 
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -634,6 +634,37 @@ def update_user_subscriptions(user_id):
     except (Exception, psycopg2.DatabaseError) as error:
         conn.rollback()
         return jsonify({"error": f"Database error: {str(error)}"}), 500
+    finally:
+        if conn is not None:
+            conn.close()
+
+@app.route("/api/download/<int:document_id>", methods=['GET'])
+def download_document(document_id):
+    """Finds a document by ID and serves it for download."""
+    conn = None
+    try:
+        conn = psycopg2.connect(**DB_CONFIG)
+        cur = conn.cursor()
+
+        # Find the file path in the database
+        cur.execute("SELECT fileurl FROM documents WHERE documentid = %s;", (document_id,))
+        result = cur.fetchone()
+        cur.close()
+
+        if result:
+            file_path = result[0]
+            # The path stored is absolute (e.g., /app/uploads/file.pdf)
+            # We need the directory and the filename separately
+            directory = os.path.dirname(file_path)
+            filename = os.path.basename(file_path)
+
+            # Use send_from_directory to securely send the file
+            return send_from_directory(directory, filename, as_attachment=True)
+        else:
+            return jsonify({"error": "File not found."}), 404
+
+    except (Exception, psycopg2.DatabaseError) as error:
+        return jsonify({"error": f"Server error: {str(error)}"}), 500
     finally:
         if conn is not None:
             conn.close()
