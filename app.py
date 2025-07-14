@@ -591,3 +591,49 @@ def register_user():
     finally:
         if conn is not None:
             conn.close()
+
+@app.route("/api/users/<int:user_id>/subscriptions", methods=['GET'])
+def get_user_subscriptions(user_id):
+    """Gets all service IDs a user is subscribed to."""
+    conn = None
+    try:
+        conn = psycopg2.connect(**DB_CONFIG)
+        cur = conn.cursor()
+        cur.execute("SELECT serviceid FROM subscriptions WHERE userid = %s;", (user_id,))
+        # Fetch all results and flatten the list of tuples
+        subscribed_ids = [row[0] for row in cur.fetchall()]
+        cur.close()
+        return jsonify(subscribed_ids)
+    except (Exception, psycopg2.DatabaseError) as error:
+        return jsonify({"error": f"Database error: {str(error)}"}), 500
+    finally:
+        if conn is not None:
+            conn.close()
+
+@app.route("/api/users/<int:user_id>/subscriptions", methods=['POST'])
+def update_user_subscriptions(user_id):
+    """Updates a user's subscriptions based on a list of service IDs."""
+    data = request.get_json()
+    service_ids = data.get('serviceIDs', [])
+
+    conn = None
+    try:
+        conn = psycopg2.connect(**DB_CONFIG)
+        cur = conn.cursor()
+        
+        # A simple way to update is to delete all old subscriptions and insert the new ones
+        cur.execute("DELETE FROM subscriptions WHERE userid = %s;", (user_id,))
+        
+        # Insert the new subscriptions
+        for service_id in service_ids:
+            cur.execute("INSERT INTO subscriptions (userid, serviceid) VALUES (%s, %s);", (user_id, service_id))
+            
+        conn.commit()
+        cur.close()
+        return jsonify({"success": True, "message": "Subscriptions updated successfully."})
+    except (Exception, psycopg2.DatabaseError) as error:
+        conn.rollback()
+        return jsonify({"error": f"Database error: {str(error)}"}), 500
+    finally:
+        if conn is not None:
+            conn.close()
