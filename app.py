@@ -520,39 +520,55 @@ def delete_faq(faq_id):
         if conn is not None:
             conn.close()
 
+@app.route("/api/user-types", methods=['GET'])
+def get_user_types():
+    """Endpoint to get all user types for the registration form."""
+    conn = None
+    try:
+        conn = psycopg2.connect(**DB_CONFIG)
+        cur = conn.cursor()
+        cur.execute("SELECT userTypeID, typeName FROM user_types ORDER BY typeName;")
+        data = cur.fetchall()
+        cur.close()
+        data_list = [{"userTypeID": row[0], "typeName": row[1]} for row in data]
+        return jsonify(data_list)
+    except (Exception, psycopg2.DatabaseError) as error:
+        return jsonify({"error": f"Database error: {str(error)}"}), 500
+    finally:
+        if conn is not None:
+            conn.close()
+
 @app.route("/api/register", methods=['POST'])
 def register_user():
-    """Endpoint for public user registration."""
+    """Endpoint for public user registration with user type and profile."""
     data = request.get_json()
     email = data.get('email')
     password = data.get('password')
+    user_type_id = data.get('userTypeID')
+    profile_details = data.get('profileDetails')
 
-    if not email or not password:
-        return jsonify({"error": "Email and password are required."}), 400
+    if not email or not password or not user_type_id:
+        return jsonify({"error": "Email, password, and user type are required."}), 400
 
-    # Securely hash the password before storing it
     password_hash = generate_password_hash(password)
-
-    # Get the roleID for 'Public User'
-    # In a real app, this might be cached instead of queried every time
-    public_user_role_id = 3 # Assuming 'Public User' has roleID = 3
+    public_user_role_id = 3 # 'Public User' role
 
     conn = None
     try:
         conn = psycopg2.connect(**DB_CONFIG)
         cur = conn.cursor()
-
-        # Insert the new user with the 'Public User' role
-        sql = "INSERT INTO users (email, passwordhash, roleid) VALUES (%s, %s, %s);"
-        cur.execute(sql, (email, password_hash, public_user_role_id))
-
+        
+        sql = """
+            INSERT INTO users (email, passwordhash, roleid, usertypeid, profiledetails) 
+            VALUES (%s, %s, %s, %s, %s);
+        """
+        cur.execute(sql, (email, password_hash, public_user_role_id, user_type_id, profile_details))
+        
         conn.commit()
         cur.close()
-
+        
         return jsonify({"success": True, "message": "User registered successfully."}), 201
-
     except psycopg2.IntegrityError:
-        # This error occurs if the email (which is UNIQUE) already exists
         conn.rollback()
         return jsonify({"error": "This email address is already registered."}), 409
     except (Exception, psycopg2.DatabaseError) as error:
