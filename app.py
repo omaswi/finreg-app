@@ -540,16 +540,28 @@ def get_user_types():
 
 @app.route("/api/register", methods=['POST'])
 def register_user():
-    """Endpoint for public user registration with user type and profile."""
-    data = request.get_json()
-    email = data.get('email')
-    password = data.get('password')
-    user_type_id = data.get('userTypeID')
-    profile_details = data.get('profileDetails')
+    """Endpoint for public user registration with profile PDF upload."""
+    
+    # 1. Validate form data and file
+    if 'profilePDF' not in request.files:
+        return jsonify({"error": "Profile PDF is missing."}), 400
+    
+    file = request.files['profilePDF']
+    email = request.form.get('email')
+    password = request.form.get('password')
+    user_type_id = request.form.get('userTypeID')
 
-    if not email or not password or not user_type_id:
-        return jsonify({"error": "Email, password, and user type are required."}), 400
+    if not all([email, password, user_type_id, file]):
+        return jsonify({"error": "Email, password, user type, and profile PDF are required."}), 400
+    if not allowed_file(file.filename): # Reusing our helper function
+        return jsonify({"error": "Invalid file type for profile."}), 400
 
+    # 2. Save the uploaded profile PDF
+    filename = secure_filename(f"profile_{email}_{file.filename}")
+    file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+    file.save(file_path)
+
+    # 3. Save user to the database
     password_hash = generate_password_hash(password)
     public_user_role_id = 3 # 'Public User' role
 
@@ -558,11 +570,12 @@ def register_user():
         conn = psycopg2.connect(**DB_CONFIG)
         cur = conn.cursor()
         
+        # We now store the file path in the 'profiledetails' column
         sql = """
             INSERT INTO users (email, passwordhash, roleid, usertypeid, profiledetails) 
             VALUES (%s, %s, %s, %s, %s);
         """
-        cur.execute(sql, (email, password_hash, public_user_role_id, user_type_id, profile_details))
+        cur.execute(sql, (email, password_hash, public_user_role_id, user_type_id, file_path))
         
         conn.commit()
         cur.close()
