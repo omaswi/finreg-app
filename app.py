@@ -134,7 +134,7 @@ def get_financial_services():
         cur = conn.cursor()
         cur.execute("SELECT serviceid AS id, servicename AS name, description FROM financial_services ORDER BY servicename;")
         data = cur.fetchall()
-        data_list = [{"serviceID": row[0], "serviceName": row[1], "description": row[2]} for row in data]
+        data_list = [{"id": row[0], "name": row[1], "description": row[2]} for row in data]
         return jsonify(data_list)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -403,7 +403,7 @@ def get_regulators():
         cur = conn.cursor()
         cur.execute("SELECT regulatorid AS id, name, abbreviation FROM regulators ORDER BY name;")
         data = cur.fetchall()
-        data_list = [{"regulatorID": row[0], "name": row[1], "abbreviation": row[2]} for row in data]
+        data_list = [{"id": row[0], "name": row[1], "abbreviation": row[2]} for row in data]
         return jsonify(data_list)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -486,7 +486,7 @@ def get_document_types():
         cur = conn.cursor()
         cur.execute("SELECT typeid AS id, typename AS name FROM document_types ORDER BY typename;")
         data = cur.fetchall()
-        data_list = [{"typeID": row[0], "typeName": row[1]} for row in data]
+        data_list = [{"id": row[0], "name": row[1]} for row in data]
         return jsonify(data_list)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -561,7 +561,7 @@ def get_user_types():
         cur = conn.cursor()
         cur.execute("SELECT usertypeid AS id, typename AS name FROM user_types ORDER BY typename;")
         data = cur.fetchall()
-        data_list = [{"userTypeID": row[0], "typeName": row[1]} for row in data]
+        data_list = [{"id": row[0], "name": row[1]} for row in data]
         return jsonify(data_list)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
