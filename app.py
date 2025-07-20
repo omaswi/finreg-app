@@ -132,7 +132,7 @@ def get_financial_services():
     try:
         conn = get_db_connection()
         cur = conn.cursor()
-        cur.execute("SELECT serviceid, servicename, description FROM financial_services ORDER BY servicename;")
+        cur.execute("SELECT serviceid AS id, servicename AS name, description FROM financial_services ORDER BY servicename;")
         data = cur.fetchall()
         data_list = [{"serviceID": row[0], "serviceName": row[1], "description": row[2]} for row in data]
         return jsonify(data_list)
@@ -401,7 +401,7 @@ def get_regulators():
     try:
         conn = get_db_connection()
         cur = conn.cursor()
-        cur.execute("SELECT regulatorid, name, abbreviation FROM regulators ORDER BY name;")
+        cur.execute("SELECT regulatorid AS id, name, abbreviation FROM regulators ORDER BY name;")
         data = cur.fetchall()
         data_list = [{"regulatorID": row[0], "name": row[1], "abbreviation": row[2]} for row in data]
         return jsonify(data_list)
@@ -484,7 +484,7 @@ def get_document_types():
     try:
         conn = get_db_connection()
         cur = conn.cursor()
-        cur.execute("SELECT typeid, typename FROM document_types ORDER BY typename;")
+        cur.execute("SELECT typeid AS id, typename AS name FROM document_types ORDER BY typename;")
         data = cur.fetchall()
         data_list = [{"typeID": row[0], "typeName": row[1]} for row in data]
         return jsonify(data_list)
@@ -559,7 +559,7 @@ def get_user_types():
     try:
         conn = get_db_connection()
         cur = conn.cursor()
-        cur.execute("SELECT usertypeid, typename FROM user_types ORDER BY typename;")
+        cur.execute("SELECT usertypeid AS id, typename AS name FROM user_types ORDER BY typename;")
         data = cur.fetchall()
         data_list = [{"userTypeID": row[0], "typeName": row[1]} for row in data]
         return jsonify(data_list)
