@@ -1,11 +1,15 @@
 import os
 import psycopg2
-from flask import Flask, jsonify, request, send_from_directory
+import json
+import secrets
+from datetime import timedelta
+from functools import wraps
+from flask import Flask, jsonify, request, send_from_directory, session, g
 from flask_cors import CORS
 from werkzeug.utils import secure_filename
 from werkzeug.security import generate_password_hash, check_password_hash
 import PyPDF2
-from transformers import pipeline
+from transformers import pipeline # Commented out for performance during dev
 
 # --- AI Summarization Model ---
 summarizer = pipeline("summarization", model="sshleifer/distilbart-cnn-12-6")
@@ -21,10 +25,42 @@ DB_CONFIG = {
 UPLOAD_FOLDER = '/app/uploads'
 ALLOWED_EXTENSIONS = {'pdf', 'doc', 'docx'}
 
-# --- FLASK APP INITIALIZATION ---
 app = Flask(__name__)
+app.secret_key = os.environ.get('FLASK_SECRET_KEY', secrets.token_hex(32))
+app.config.update(
+    SESSION_COOKIE_SECURE=True,
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE='Lax',
+    PERMANENT_SESSION_LIFETIME=timedelta(hours=8)
+)
+CORS(app, supports_credentials=True, origins=["http://127.0.0.1:8080", "http://127.0.0.1:8001", "null"])
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-CORS(app, resources={r"/api/*": {"origins": "*"}})
+
+class AuditLogger:
+    def __init__(self, db_config):
+        self.db_config = db_config
+    
+    def log(self, user_id, action, target_id=None, metadata=None):
+        conn = None
+        try:
+            conn = psycopg2.connect(**self.db_config)
+            with conn.cursor() as cur:
+                cur.execute("""
+                    INSERT INTO audit_trail (userID, action, targetID, additional_info)
+                    VALUES (%s, %s, %s, %s::jsonb);
+                """, (user_id, action, target_id, json.dumps(metadata) if metadata else None))
+                conn.commit()
+        except psycopg2.Error as e:
+            app.logger.error(f"Audit log failed: {str(e)}")
+            if conn: conn.rollback()
+        finally:
+            if conn: conn.close()
+
+audit_logger = AuditLogger(DB_CONFIG)
+
+@app.before_request
+def load_user_from_session():
+    g.user_id = session.get('user_id')
 
 # --- HELPER FUNCTIONS ---
 def allowed_file(filename):
@@ -62,6 +98,7 @@ def health_check():
     return jsonify({"status": "ok", "message": "FinReg Portal API is running."})
 
 @app.route("/api/financial-services", methods=['POST'])
+@audit_action("financial_service_created", target_id_param=new_id)
 def create_financial_service():
     data = request.get_json()
     serviceName = data.get('serviceName')
@@ -88,6 +125,7 @@ def create_financial_service():
             conn.close()
 
 @app.route("/api/financial-services/<int:service_id>", methods=['PUT'])
+@audit_action("financial_service_updated", target_id_param="service_id")
 def update_financial_service(service_id):
     data = request.get_json()
     serviceName = data.get('serviceName')
@@ -261,14 +299,28 @@ def login():
         sql = "SELECT u.passwordhash, r.rolename, u.userid FROM users u JOIN roles r ON u.roleid = r.roleid WHERE u.email = %s AND u.is_archived = FALSE;"
         cur.execute(sql, (email,))
         user_data = cur.fetchone()
-        if user_data and check_password_hash(user_data[0], password):
-            return jsonify({"success": True, "message": "Login successful.", "role": user_data[1], "userID": user_data[2]})
+        if user_data and check_password_hash(user_data[1], password):
+            session.permanent = True
+            session['user_id'] = user_data[0]
+            session['user_role'] = user_data[2]
+            g.user_id = user_data[0]
+            audit_logger.log(user_id=g.user_id, action="user_login_success", metadata={"email": email})
+            return jsonify({"success": True, "message": "Login successful.", "role": user_data[2], "userID": user_data[0]})
         else:
+            audit_logger.log(user_id=None, action="user_login_failed", metadata={"email": email})
             return jsonify({"error": "Invalid email or password."}), 401
     except Exception as e:
         return jsonify({"error": str(e)}), 500
     finally:
         if conn: conn.close()
+
+@app.route("/api/logout", methods=['POST'])
+def logout():
+    user_id = session.get('user_id')
+    if user_id:
+        audit_logger.log(user_id=user_id, action="user_logout")
+    session.clear()
+    return jsonify({"success": True, "message": "You have been logged out."})
 
 # === ADMIN-ONLY CRUD ENDPOINTS ===
 
@@ -379,6 +431,7 @@ def admin_update_user(user_id):
         if conn: conn.close()
 
 @app.route("/api/admin/users/<int:user_id>", methods=['DELETE'])
+@audit_action("user_archived", target_id_param="user_id")
 def admin_delete_user(user_id):
     """Performs a SOFT DELETE by archiving the user."""
     conn = get_db_connection()
@@ -723,6 +776,7 @@ def update_document(document_id):
         if conn: conn.close()
 
 @app.route("/api/documents/<int:document_id>", methods=['DELETE'])
+@audit_action("document_archived", target_id_param="document_id")
 def delete_document(document_id):
     conn = None
     try:
@@ -881,6 +935,7 @@ def get_archived_documents():
         if conn: conn.close()
 
 @app.route("/api/admin/restore/user/<int:user_id>", methods=['POST'])
+@audit_action("user_restored", target_id_param="user_id")
 def restore_user(user_id):
     conn = get_db_connection()
     try:
@@ -895,6 +950,7 @@ def restore_user(user_id):
         if conn: conn.close()
 
 @app.route("/api/admin/restore/document/<int:document_id>", methods=['POST'])
+@audit_action("document_restored", target_id_param="document_id")
 def restore_document(document_id):
     conn = get_db_connection()
     try:
