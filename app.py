@@ -15,7 +15,7 @@ from openai import OpenAI
 from io import BytesIO
 client = OpenAI()
 
-OPENAI_API_KEY = os.environ.get('ATAS_OPENAI_API_KEY')
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
 
 # --- AI Summarization Model ---
 summarizer = pipeline("summarization", model="sshleifer/distilbart-cnn-12-6")
