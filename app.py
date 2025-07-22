@@ -36,7 +36,21 @@ app.config.update(
     SESSION_COOKIE_SAMESITE='Lax',
     PERMANENT_SESSION_LIFETIME=timedelta(hours=8)
 )
-CORS(app, supports_credentials=True, origins=["http://127.0.0.1:8080", "http://127.0.0.1:8001", "null"])
+CORS(app, 
+    supports_credentials=True,
+    origins=["https://finreg-app-u45785.vm.elestio.app", "http://127.0.0.1:8080", "http://127.0.0.1:8001"],
+    expose_headers=["Set-Cookie"],
+    allow_headers=["Content-Type", "Authorization"]
+)
+
+app.config.update(
+    SESSION_COOKIE_SECURE=True,
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE='None',  # Changed from 'Lax' to 'None'
+    PERMANENT_SESSION_LIFETIME=timedelta(hours=8),
+    SESSION_COOKIE_DOMAIN='.vm.elestio.app'  # Important for subdomains
+)
+
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
 class AuditLogger:
@@ -439,12 +453,22 @@ def login():
         cur.execute(sql, (email,))
         user_data = cur.fetchone()
         if user_data and check_password_hash(user_data[0], password):
+            session.clear()
             session.permanent = True
             session['user_id'] = user_data[2]
             session['user_role'] = user_data[1]
             g.user_id = user_data[2]
-            audit_logger.log(user_id=g.user_id, action="user_login_success", metadata={"email": email, "ip": request.remote_addr})
+            
+            # Debug output
+            print(f"Session created: {dict(session)}")
+            print(f"Response headers: {dict(response.headers)}")
+            
+            audit_logger.log(user_id=g.user_id, action="user_login_success", metadata={"email": email, "ip": request.remote_addr, "session_id": session.sid})
             return jsonify({"success": True, "message": "Login successful.", "role": user_data[1], "userID": user_data[2]})
+
+            # Ensure cookies are properly set
+            response.headers.add('Access-Control-Allow-Credentials', 'true')
+            return response
         else:
             audit_logger.log(user_id=None, action="user_login_failed", metadata={"email": email, "ip": request.remote_addr})
             return jsonify({"error": "Invalid email or password."}), 401
@@ -462,10 +486,28 @@ def login():
 def logout():
     user_id = session.get('user_id')
     if user_id:
-        audit_logger.log(user_id=user_id, action="user_logout")
+        audit_logger.log(user_id=user_id, action="user_logout", metadata={"ip": request.remote_addr})
     session.clear()
-    return jsonify({"success": True, "message": "You have been logged out."})
+    return jsonify({"success": True, "message": "You have Logged out successfully"})
+    response.delete_cookie(app.session_cookie_name)
+    return response
 
+@app.before_request
+def verify_session():
+    # Skip session check for login and static files
+    if request.path.startswith('/api/login') or request.path.startswith('/static'):
+        return
+        
+    if 'user_id' not in session:
+        return jsonify({"error": "Unauthorized"}), 401
+
+@app.route("/api/debug-session")
+def debug_session():
+    return jsonify({
+        "session_id": session.sid,
+        "session_data": dict(session),
+        "headers": dict(request.headers)
+    })
 # === ADMIN-ONLY CRUD ENDPOINTS ===
 
 @app.route("/api/roles", methods=['GET'])
