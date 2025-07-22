@@ -4,6 +4,5 @@ gunicorn
 psycopg2-binary
 Flask-Cors
 PyPDF2
-transformers
 torch
 Werkzeug
