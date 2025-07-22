@@ -229,7 +229,6 @@ def health_check():
     return jsonify({"status": "ok", "message": "FinReg Portal API is running."})
 
 @app.route("/api/financial-services", methods=['POST'])
-@audit_action("financial_service_created", target_id_param="new_id")
 def create_financial_service():
     data = request.get_json()
     serviceName = data.get('serviceName')
