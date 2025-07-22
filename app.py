@@ -446,46 +446,57 @@ def register_user():
 
 @app.route("/api/login", methods=['POST'])
 def login():
-    data = request.get_json()
-    email = data.get('email')
-    password = data.get('password')
-    if not email or not password: return jsonify({"error": "Email and password are required."}), 400
-    conn = None
     try:
+        data = request.get_json()
+        if not data:
+            return jsonify({"error": "No JSON data received"}), 400
+            
+        email = data.get('email')
+        password = data.get('password')
+        
+        if not email or not password:
+            return jsonify({"error": "Email and password are required"}), 400
+
         conn = get_db_connection()
         cur = conn.cursor()
-        sql = "SELECT u.passwordhash, r.rolename, u.userid FROM users u JOIN roles r ON u.roleid = r.roleid WHERE u.email = %s AND u.is_archived = FALSE;"
-        cur.execute(sql, (email,))
+        cur.execute("""
+            SELECT u.passwordhash, r.rolename, u.userid 
+            FROM users u 
+            JOIN roles r ON u.roleid = r.roleid 
+            WHERE u.email = %s AND u.is_archived = FALSE;
+        """, (email,))
         user_data = cur.fetchone()
+
         if user_data and check_password_hash(user_data[0], password):
             session.clear()
-            session.permanent = True
             session['user_id'] = user_data[2]
             session['user_role'] = user_data[1]
-            g.user_id = user_data[2]
-            
-            # Debug output
-            print(f"Session created: {dict(session)}")
-            print(f"Response headers: {dict(response.headers)}")
             
             audit_logger.log(user_id=g.user_id, action="user_login_success", metadata={"email": email, "ip": request.remote_addr, "session_id": session.sid})
-            return jsonify({"success": True, "message": "Login successful.", "role": user_data[1], "userID": user_data[2]})
-
+            return jsonify({
+                "success": True,
+                "message": "Login successful",
+                "role": user_data[1],
+                "userID": user_data[2]
+            })
             # Ensure cookies are properly set
             response.headers.add('Access-Control-Allow-Credentials', 'true')
             return response
         else:
             audit_logger.log(user_id=None, action="user_login_failed", metadata={"email": email, "ip": request.remote_addr})
-            return jsonify({"error": "Invalid email or password."}), 401
+            return jsonify({"error": "Invalid email or password"}), 401
+            
     except Exception as e:
         audit_logger.log(
             user_id=None,
             action="login_error",
             metadata={"email": email, "error": str(e), "ip": request.remote_addr}
         )
-        return jsonify({"error": str(e)}), 500
+        print(f"Login error: {str(e)}")  # Debug logging
+        return jsonify({"error": "Internal server error"}), 500
     finally:
-        if conn: conn.close()
+        if 'conn' in locals():
+            conn.close()
 
 @app.route("/api/logout", methods=['POST'])
 def logout():
