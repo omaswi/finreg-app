@@ -229,6 +229,7 @@ def health_check():
     return jsonify({"status": "ok", "message": "FinReg Portal API is running."})
 
 @app.route("/api/financial-services", methods=['POST'])
+@audit_action("financial_service_created", target_id_param="new_id")
 def create_financial_service():
     data = request.get_json()
     serviceName = data.get('serviceName')
@@ -243,7 +244,6 @@ def create_financial_service():
         cur = conn.cursor()
         cur.execute("INSERT INTO financial_services (servicename, description) VALUES (%s, %s) RETURNING serviceid;", (serviceName, description))
         new_id = cur.fetchone()[0]        
-        @audit_action("financial_service_created", target_id_param=new_id)
         conn.commit()
         cur.close()
         return jsonify({"success": True, "new_financial_service": {"serviceID": new_id, "serviceName": serviceName}}), 201
