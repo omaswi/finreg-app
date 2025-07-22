@@ -38,9 +38,14 @@ app.config.update(
 )
 CORS(app, 
     supports_credentials=True,
-    origins=["https://finreg-app-u45785.vm.elestio.app", "http://127.0.0.1:8080", "http://127.0.0.1:8001"],
+    origins=[
+        "https://finreg-app-u45785.vm.elestio.app",
+        "http://localhost:8000",
+        "http://127.0.0.1:8000"
+    ],
     expose_headers=["Set-Cookie"],
-    allow_headers=["Content-Type", "Authorization"]
+    allow_headers=["Content-Type", "Authorization"],
+    methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"]
 )
 
 app.config.update(
