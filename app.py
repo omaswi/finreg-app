@@ -132,57 +132,6 @@ def log_system_action(action, target_type=None, target_id=None, details=None):
 
 # === PUBLIC-FACING API ENDPOINTS ===
 
-# --- LOG IN ---
-
-try:
-    # --- LOG IN ---
-    if user_data and check_password_hash(user_data[0], password):
-        session['user_id'] = user_data[2]  # userID is at index 2
-        g.user_id = user_data[2]
-        
-        # Log the successful login
-        audit_logger.log(
-            user_id=user_data[2],
-            action="user_login",
-            metadata={
-                "email": email,
-                "ip": request.remote_addr,
-                "user_agent": request.user_agent.string
-            }
-        )
-        
-        return jsonify({
-            "success": True, 
-            "message": "Login successful.", 
-            "role": user_data[1], 
-            "userID": user_data[2]
-        })
-    else:
-        # Log failed login attempt (without user ID)
-        audit_logger.log(
-            user_id=None,
-            action="failed_login_attempt",
-            metadata={
-                "email": email,
-                "ip": request.remote_addr
-            }
-        )
-        return jsonify({"error": "Invalid email or password."}), 401
-except Exception as e:
-    # ... error handling ...
-    audit_logger.log(
-        user_id=None,
-        action="login_error",
-        metadata={
-            "email": email,
-            "error": str(e)
-        }
-    )
-    return jsonify({"error": str(e)}), 500
-finally:
-    if conn:
-        conn.close()
-
 @app.before_request
 def load_user_from_session():
     g.user_id = session.get('user_id')
