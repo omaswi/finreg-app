@@ -6,3 +6,4 @@ PyPDF2
 transformers
 torch
 Werkzeug
+openai
