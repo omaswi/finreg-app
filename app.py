@@ -9,7 +9,11 @@ from flask_cors import CORS
 from werkzeug.utils import secure_filename
 from werkzeug.security import generate_password_hash, check_password_hash
 import PyPDF2
-from transformers import pipeline # Commented out for performance during dev
+from PyPDF2 import PdfReader
+import time
+from openai import OpenAI
+from io import BytesIO
+client = OpenAI()
 
 # --- AI Summarization Model ---
 summarizer = pipeline("summarization", model="sshleifer/distilbart-cnn-12-6")
@@ -81,15 +85,72 @@ def extract_text_from_pdf(file_stream):
         print(f"Error extracting text from PDF: {e}")
         return ""
 
-def summarize_text(text, max_chunk_size=1024):
-    if not text:
-        return ""
+def chunk_text(text, words_per_chunk=2800):
+    """Split text into manageable chunks"""
+    words = text.split()
+    return [' '.join(words[i:i + words_per_chunk]) 
+           for i in range(0, len(words), words_per_chunk)]
+
+def summarize_with_gpt(text_chunk):
+    """Generate summary for a text chunk"""
     try:
-        summary = summarizer(text[:max_chunk_size], max_length=150, min_length=40, do_sample=False)
-        return summary[0]['summary_text']
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": """
+                You are a professional advisor at Financial Regulations Center.
+                 Create a concise summary of key points from documents to make it easy for your clients to understand."""},
+                {"role": "user", "content": text_chunk[:8000]}
+            ],
+            max_tokens=150,
+            temperature=0.3
+        )
+        return response.choices[0].message.content
+    except openai.RateLimitError:
+      #  time.sleep(60)
+        return summarize_with_gpt(text_chunk)
     except Exception as e:
-        print(f"Error summarizing text: {e}")
-        return "Summary could not be generated."
+        app.logger.error(f"GPT error: {str(e)}")
+        return None
+
+def generate_ai_summary(file):
+    """Main summarization function"""
+    try:
+        text = extract_text_from_pdf(file)
+        if not text.strip():
+            return "No extractable text found"
+        
+        chunks = chunk_text(text)[:5]  # Limit to 5 chunks to control costs
+        if not chunks:
+            return "Text too short for summary"
+        
+        summaries = []
+        for i, chunk in enumerate(chunks):
+            summary = summarize_with_gpt(chunk)
+            if summary:
+                summaries.append(summary)
+           # if (i + 1) % 3 == 0:  # Rate limit handling
+            #    time.sleep(60)
+        
+        if not summaries:
+            return "Could not generate summary"
+            
+        # Combine summaries
+        combined = "\n".join(summaries)
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": "Combine these into a cohesive summary:"},
+                {"role": "user", "content": combined}
+            ],
+            max_tokens=500,
+            temperature=0.3
+        )
+        return response.choices[0].message.content
+        
+    except Exception as e:
+        app.logger.error(f"Summary generation failed: {str(e)}")
+        return "AI summary unavailable"
 
 # === PUBLIC-FACING API ENDPOINTS ===
 
@@ -713,7 +774,7 @@ def get_all_documents():
 
 @app.route("/api/documents", methods=['POST'])
 def create_document():
-    uploader_id = 1
+    uploader_id = session.get('user_id')
     if 'file' not in request.files: return jsonify({"error": "No file part"}), 400
     file = request.files['file']
     if file.filename == '' or not allowed_file(file.filename): return jsonify({"error": "Invalid file"}), 400
@@ -723,7 +784,7 @@ def create_document():
     service_ids = request.form.getlist('serviceIDs[]')
     
     text_content = extract_text_from_pdf(file) if file.filename.lower().endswith('.pdf') else ""
-    ai_summary = summarize_text(text_content)
+    ai_summary = generate_ai_summary(file)
     file.seek(0)
     
     filename = secure_filename(file.filename)
