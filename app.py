@@ -17,9 +17,6 @@ client = OpenAI()
 
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
 
-# --- AI Summarization Model ---
-summarizer = pipeline("summarization", model="sshleifer/distilbart-cnn-12-6")
-
 # --- DATABASE CONNECTION CONFIGURATION ---
 DB_CONFIG = {
     "dbname": os.environ.get('ATAS_DB_NAME', 'finreg'),
