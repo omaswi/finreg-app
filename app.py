@@ -165,20 +165,20 @@ def log_system_action(action, target_type=None, target_id=None, details=None):
         )
         return jsonify({"error": "Invalid email or password."}), 401
         
-except Exception as e:
-    # Log login error
-    audit_logger.log(
-        user_id=None,
-        action="login_error",
-        metadata={
-            "email": email,
-            "error": str(e)
-        }
-    )
-    return jsonify({"error": str(e)}), 500
-finally:
-    if conn:
-        conn.close()
+    except Exception as e:
+        # Log login error
+        audit_logger.log(
+            user_id=None,
+            action="login_error",
+            metadata={
+                "email": email,
+                "error": str(e)
+            }
+        )
+        return jsonify({"error": str(e)}), 500
+    finally:
+        if conn:
+            conn.close()
 
 @app.before_request
 def load_user_from_session():
