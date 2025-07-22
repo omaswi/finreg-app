@@ -64,7 +64,7 @@ audit_logger = AuditLogger(DB_CONFIG)
 @app.before_request
 def load_user_id_to_g():
     g.user_id = session.get('user_id')
-    print(f"BEFORE_REQUEST: g.user_id = {g.user_id}, session.get('user_id') = {session.get('user_id')}")
+    #print(f"BEFORE_REQUEST: g.user_id = {g.user_id}, session.get('user_id') = {session.get('user_id')}")
 
 def audit_action(action_name, user_id_getter=None, target_id_param=None):
 
