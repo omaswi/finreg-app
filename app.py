@@ -42,9 +42,10 @@ CORS(app,
         "https://finreg-app-u45785.vm.elestio.app",
         "http://localhost:8000",
         "http://127.0.0.1:8000"
+        "null"
     ],
     expose_headers=["Set-Cookie"],
-    allow_headers=["Content-Type", "Authorization"],
+    allow_headers=["Content-Type", "Authorization", "Accept"],
     methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"]
 )
 
@@ -154,6 +155,14 @@ def log_system_action(action, target_type=None, target_id=None, details=None):
 @app.before_request
 def load_user_from_session():
     g.user_id = session.get('user_id')
+
+@app.after_request
+def after_request(response):
+    response.headers.add('Access-Control-Allow-Origin', 'http://localhost:8000')
+    response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
+    response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
+    response.headers.add('Access-Control-Allow-Credentials', 'true')
+    return response
 
 # --- HELPER FUNCTIONS ---
 def allowed_file(filename):
@@ -1081,8 +1090,15 @@ def get_user_subscriptions(user_id):
     finally:
         if conn: conn.close()
 
-@app.route("/api/users/<int:user_id>/subscriptions", methods=['POST'])
+@app.route("/api/users/<int:user_id>/subscriptions", methods=['POST','OPTIONS'])
 def update_user_subscriptions(user_id):
+    if request.method == 'OPTIONS':
+        return jsonify({}), 200
+        
+    # Verify the requesting user matches the user_id in the URL
+    if session.get('user_id') != user_id:
+        return jsonify({"error": "Unauthorized"}), 401
+        
     data = request.get_json()
     service_ids = data.get('serviceIDs', [])
     conn = None
