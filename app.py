@@ -472,7 +472,7 @@ def login():
             session['user_id'] = user_data[2]
             session['user_role'] = user_data[1]
             
-            audit_logger.log(user_id=g.user_id, action="user_login_success", metadata={"email": email, "ip": request.remote_addr, "session_id": session.sid})
+            audit_logger.log(user_id=g.user_id, action="user_login_success", metadata={"email": email, "ip": request.remote_addr})
             return jsonify({
                 "success": True,
                 "message": "Login successful",
