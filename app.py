@@ -115,7 +115,6 @@ def audit_action(action_name, user_id_getter=None, target_id_param=None):
     return decorator
 
 def log_system_action(action, target_type=None, target_id=None, details=None):
-
     metadata = {
         'system_action': True,
         'target_type': target_type
@@ -129,9 +128,14 @@ def log_system_action(action, target_type=None, target_id=None, details=None):
         target_id=target_id,
         metadata=metadata
     )
+
+
 # === PUBLIC-FACING API ENDPOINTS ===
 
-# --- LOG  IN ---- 
+# --- LOG IN ---
+
+try:
+    # --- LOG IN ---
     if user_data and check_password_hash(user_data[0], password):
         session['user_id'] = user_data[2]  # userID is at index 2
         g.user_id = user_data[2]
@@ -164,21 +168,20 @@ def log_system_action(action, target_type=None, target_id=None, details=None):
             }
         )
         return jsonify({"error": "Invalid email or password."}), 401
-        
-    except Exception as e:
-        # Log login error
-        audit_logger.log(
-            user_id=None,
-            action="login_error",
-            metadata={
-                "email": email,
-                "error": str(e)
-            }
-        )
-        return jsonify({"error": str(e)}), 500
-    finally:
-        if conn:
-            conn.close()
+except Exception as e:
+    # ... error handling ...
+    audit_logger.log(
+        user_id=None,
+        action="login_error",
+        metadata={
+            "email": email,
+            "error": str(e)
+        }
+    )
+    return jsonify({"error": str(e)}), 500
+finally:
+    if conn:
+        conn.close()
 
 @app.before_request
 def load_user_from_session():
