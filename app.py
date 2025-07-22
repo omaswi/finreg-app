@@ -382,6 +382,15 @@ def chatbot_query():
 
 # === USER AUTHENTICATION & REGISTRATION ===
 
+@app.route('/api/check-session')
+def check_session():
+    if 'user_id' in session:
+        return jsonify({
+            'isAuthenticated': True,
+            'role': session.get('user_role')
+        })
+    return jsonify({'isAuthenticated': False}), 401
+    
 @app.route("/api/register", methods=['POST'])
 def register_user():
     if 'profilePDF' not in request.files: return jsonify({"error": "Profile PDF is missing."}), 400
