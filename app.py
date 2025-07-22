@@ -429,17 +429,22 @@ def login():
         sql = "SELECT u.passwordhash, r.rolename, u.userid FROM users u JOIN roles r ON u.roleid = r.roleid WHERE u.email = %s AND u.is_archived = FALSE;"
         cur.execute(sql, (email,))
         user_data = cur.fetchone()
-        if user_data and check_password_hash(user_data[1], password):
+        if user_data and check_password_hash(user_data[0], password):
             session.permanent = True
-            session['user_id'] = user_data[0]
-            session['user_role'] = user_data[2]
-            g.user_id = user_data[0]
-            audit_logger.log(user_id=g.user_id, action="user_login_success", metadata={"email": email})
-            return jsonify({"success": True, "message": "Login successful.", "role": user_data[2], "userID": user_data[0]})
+            session['user_id'] = user_data[2]
+            session['user_role'] = user_data[1]
+            g.user_id = user_data[2]
+            audit_logger.log(user_id=g.user_id, action="user_login_success", metadata={"email": email, "ip": request.remote_addr})
+            return jsonify({"success": True, "message": "Login successful.", "role": user_data[1], "userID": user_data[2]})
         else:
-            audit_logger.log(user_id=None, action="user_login_failed", metadata={"email": email})
+            audit_logger.log(user_id=None, action="user_login_failed", metadata={"email": email, "ip": request.remote_addr})
             return jsonify({"error": "Invalid email or password."}), 401
     except Exception as e:
+        audit_logger.log(
+            user_id=None,
+            action="login_error",
+            metadata={"email": email, "error": str(e), "ip": request.remote_addr}
+        )
         return jsonify({"error": str(e)}), 500
     finally:
         if conn: conn.close()
