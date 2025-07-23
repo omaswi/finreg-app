@@ -13,6 +13,7 @@ from PyPDF2 import PdfReader
 import time
 from openai import OpenAI
 from io import BytesIO
+import pgvector.psycopg2
 client = OpenAI()
 
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
@@ -164,6 +165,11 @@ def allowed_file(filename):
 # --- HELPER FUNCTIONS ---
 def get_db_connection():
     return psycopg2.connect(**DB_CONFIG)
+
+# --- NEW HELPER FUNCTIONS ---
+def get_embedding(text, model="text-embedding-ada-002"):
+   text = text.replace("\n", " ")
+   return client.embeddings.create(input=[text], model=model).data[0].embedding
 
 def extract_text_from_pdf(file_stream):
     try:
@@ -1027,6 +1033,15 @@ def create_document():
             return jsonify({"error": "Admin user not associated with a regulator."}), 403
         admin_regulator_id = result[0]
 
+        if text_content:
+            chunks = chunk_text(text_content) # Use a helper to split text into chunks
+            for chunk in chunks:
+                embedding = get_embedding(chunk)
+                cur.execute(
+                    "INSERT INTO document_chunks (document_id, chunk_text, embedding) VALUES (%s, %s, %s);",
+                    (new_doc_id, chunk, embedding)
+                )
+
         sql_doc = "INSERT INTO documents (title, regulatorid, typeid, fileurl, uploadedby, summary_ai) VALUES (%s, %s, %s, %s, %s, %s) RETURNING documentid;"
         cur.execute(sql_doc, (title, admin_regulator_id, type_id, file_path, uploader_id, ai_summary))
         new_doc_id = cur.fetchone()[0]
@@ -1042,6 +1057,45 @@ def create_document():
     finally:
         if conn: conn.close()
     pass
+
+# --- NEW SMART SEARCH ENDPOINT ---
+@app.route("/api/smart-search", methods=['POST'])
+def smart_search():
+    data = request.get_json()
+    query = data.get('query')
+    if not query:
+        return jsonify({"error": "A search query is required."}), 400
+
+    try:
+        # Convert the user's query into an embedding
+        query_embedding = get_embedding(query)
+        
+        conn = get_db_connection()
+        cur = conn.cursor()
+        pgvector.psycopg2.register_vector(conn) # Register the vector type
+
+        # Perform the similarity search
+        # This finds the 5 text chunks most similar to the user's question
+        sql = """
+            SELECT dc.chunk_text, d.title, d.documentid
+            FROM document_chunks dc
+            JOIN documents d ON dc.document_id = d.documentid
+            ORDER BY dc.embedding <=> %s
+            LIMIT 5;
+        """
+        cur.execute(sql, (query_embedding,))
+        results = cur.fetchall()
+        
+        search_results = [
+            {"text": row[0], "source_document": row[1], "documentID": row[2]}
+            for row in results
+        ]
+        
+        return jsonify(search_results)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        if conn: conn.close()
 
 @app.route("/api/documents/<int:document_id>", methods=['PUT'])
 @login_required
