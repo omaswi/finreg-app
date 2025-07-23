@@ -1015,7 +1015,7 @@ def get_all_documents():
 
 @app.route("/api/documents", methods=['POST'])
 def create_document():
-    # In a real app, you'd get this from the session
+    # You get this from the session
     uploader_id = session.get('user_id')
     if not uploader_id:
         return jsonify({"error": "Authentication required."}), 401
@@ -1050,6 +1050,7 @@ def create_document():
     conn = None
     try:
         conn = get_db_connection()
+        pgvector.psycopg2.register_vector(conn) # CRITICAL: Register vector type with the connection
         cur = conn.cursor()
 
         # Get the admin's associated regulator ID
