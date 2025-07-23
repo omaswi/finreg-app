@@ -825,7 +825,6 @@ def get_document_types():
     pass
         
 @app.route("/api/document-types", methods=['POST'])
-
 def create_document_type():
     data = request.get_json()
     typeName = data.get('typeName')
@@ -1048,17 +1047,6 @@ def create_document():
             return jsonify({"error": "Admin user is not associated with a regulator."}), 403
         admin_regulator_id = result[0]
 
-        # --- NEW: Process and store embeddings ---
-        text_content = extract_text_from_pdf(file)
-        if text_content:
-            chunks = chunk_text(text_content) # Use a helper to split text into chunks
-            for chunk in chunks:
-                embedding = get_embedding(chunk)
-                cur.execute(
-                    "INSERT INTO document_chunks (document_id, chunk_text, embedding) VALUES (%s, %s, %s);",
-                    (new_doc_id, chunk, embedding)
-                )
-
         # Insert the document and get its new ID
         sql_doc = """
             INSERT INTO documents (title, regulatorid, typeid, fileurl, uploadedby, summary_ai) 
@@ -1073,6 +1061,16 @@ def create_document():
         new_doc_id = new_doc_id_row[0]
         # --- END OF CHECK ---
 
+        # --- NEW: Process and store embeddings ---
+        text_content = extract_text_from_pdf(file)
+        if text_content:
+            chunks = chunk_text(text_content) # Use a helper to split text into chunks
+            for chunk in chunks:
+                embedding = get_embedding(chunk)
+                cur.execute(
+                    "INSERT INTO document_chunks (document_id, chunk_text, embedding) VALUES (%s, %s, %s);",
+                    (new_doc_id, chunk, embedding)
+                )
         # Link the new document to the selected financial services
         for service_id in service_ids:
             cur.execute("INSERT INTO document_services (documentid, serviceid) VALUES (%s, %s);", (new_doc_id, int(service_id)))
