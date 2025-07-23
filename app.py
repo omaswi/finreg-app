@@ -1104,7 +1104,13 @@ def get_user_subscriptions(user_id):
 @app.route("/api/users/<int:user_id>/subscriptions", methods=['POST','OPTIONS'])
 def update_user_subscriptions(user_id):
     if request.method == 'OPTIONS':
-        return jsonify({}), 200
+        # Handle preflight request
+        response = jsonify({})
+        response.headers.add('Access-Control-Allow-Origin', 'http://localhost:8000')
+        response.headers.add('Access-Control-Allow-Credentials', 'true')
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
+        response.headers.add('Access-Control-Allow-Methods', 'POST, OPTIONS')
+        return response
         
     # Verify the requesting user matches the user_id in the URL
     if session.get('user_id') != user_id:
@@ -1123,9 +1129,15 @@ def update_user_subscriptions(user_id):
             cur.executemany("INSERT INTO subscriptions (userid, serviceid) VALUES (%s, %s);", args_list)
         conn.commit()
         return jsonify({"success": True, "message": "Subscriptions updated successfully."})
+        response.headers.add('Access-Control-Allow-Origin', 'http://localhost:8000')
+        response.headers.add('Access-Control-Allow-Credentials', 'true')
+        return response
+        
     except Exception as e:
         if conn: conn.rollback()
         return jsonify({"error": str(e)}), 500
+        response.headers.add('Access-Control-Allow-Origin', 'http://localhost:8000')
+        return response
     finally:
         if conn: conn.close()
 
