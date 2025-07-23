@@ -1095,19 +1095,23 @@ def create_document():
 def smart_search():
     data = request.get_json()
     query = data.get('query')
+    print(f"--- STEP 1: RECEIVED QUERY ---")
+    print(f"Query Text: {query}")
+
     if not query:
         return jsonify({"error": "A search query is required."}), 400
 
     try:
         # Convert the user's query into an embedding
+        print(f"\n--- STEP 2: GENERATING EMBEDDING FOR QUERY ---")
         query_embedding = get_embedding(query)
+        print(f"Embedding generated successfully. First 3 values: {query_embedding[:3]}...")
         
         conn = get_db_connection()
         cur = conn.cursor()
         pgvector.psycopg2.register_vector(conn) # Register the vector type
 
         # Perform the similarity search
-        # This finds the 5 text chunks most similar to the user's question
         sql = """
             SELECT dc.chunk_text, d.title, d.documentid
             FROM document_chunks dc
@@ -1115,19 +1119,34 @@ def smart_search():
             ORDER BY dc.embedding <=> %s
             LIMIT 5;
         """
+        
+        print(f"\n--- STEP 3: EXECUTING DATABASE SIMILARITY SEARCH ---")
         cur.execute(sql, (query_embedding,))
         results = cur.fetchall()
-        
+        print(f"Database returned {len(results)} results.")
+
         search_results = [
             {"text": row[0], "source_document": row[1], "documentID": row[2]}
             for row in results
         ]
         
+        print(f"\n--- STEP 4: FORMATTING FINAL RESULTS ---")
+        # Print just the first result for brevity
+        if search_results:
+            print(f"First result: {search_results[0]}")
+        else:
+            print("No results to format.")
+        
+        print(f"\n--- SEARCH COMPLETE ---")
         return jsonify(search_results)
+        
     except Exception as e:
+        print(f"\n---! ERROR DURING SEARCH !---")
+        print(f"Error: {str(e)}")
         return jsonify({"error": str(e)}), 500
     finally:
-        if conn: conn.close()
+        if 'conn' in locals() and conn:
+            conn.close()
 
 @app.route("/api/documents/<int:document_id>", methods=['PUT'])
 
