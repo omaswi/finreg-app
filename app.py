@@ -591,6 +591,44 @@ def admin_get_users():
     finally:
         if conn: conn.close()
 
+def require_role(role_name):
+    """Decorator to protect routes based on user role."""
+    def decorator(f):
+        @wraps(f)
+        def wrapped(*args, **kwargs):
+            if 'user_role' not in session or session['user_role'] != role_name:
+                return jsonify({"error": "Unauthorized"}), 403
+            return f(*args, **kwargs)
+        return wrapped
+    return decorator
+
+@app.route("/api/regulator/documents", methods=['GET'])
+@require_role('Regulator Editor') # Protect this route
+def get_regulator_documents():
+    """Gets documents only for the logged-in regulator admin."""
+    regulator_id = session.get('regulator_id')
+    if not regulator_id:
+        return jsonify({"error": "User not associated with a regulator."}), 403
+
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        # Query is now filtered by the user's regulatorID
+        sql = """
+            SELECT d.documentid, d.title, dt.typename
+            FROM documents d
+            JOIN document_types dt ON d.typeid = dt.typeid
+            WHERE d.regulatorid = %s AND d.is_archived = FALSE
+            ORDER BY d.title;
+        """
+        cur.execute(sql, (regulator_id,))
+        docs = [{"documentID": row[0], "title": row[1], "typeName": row[2]} for row in cur.fetchall()]
+        return jsonify(docs)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        if conn: conn.close()
+
 @app.route("/api/admin/users", methods=['POST'])
 def admin_create_user():
     data = request.get_json()
