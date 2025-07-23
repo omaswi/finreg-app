@@ -1004,58 +1004,80 @@ def get_all_documents():
         if conn: conn.close()
 
 @app.route("/api/documents", methods=['POST'])
-
 def create_document():
+    # In a real app, you'd get this from the session
     uploader_id = session.get('user_id')
-    if 'file' not in request.files: return jsonify({"error": "No file part"}), 400
+    if not uploader_id:
+        return jsonify({"error": "Authentication required."}), 401
+
+    # --- 1. Validate the incoming request and file ---
+    if 'file' not in request.files:
+        return jsonify({"error": "No file part in the request."}), 400
     file = request.files['file']
-    if file.filename == '' or not allowed_file(file.filename): return jsonify({"error": "Invalid file"}), 400
-    
+    if file.filename == '' or not allowed_file(file.filename):
+        return jsonify({"error": "Invalid or no file selected."}), 400
+
+    # --- 2. Extract and validate form data ---
     title = request.form.get('title')
     type_id = request.form.get('typeID')
     service_ids = request.form.getlist('serviceIDs[]')
-    
+
+    if not all([title, type_id, service_ids]):
+        return jsonify({"error": "Title, type, and at least one service are required."}), 400
+
+    # --- 3. Process the file and generate AI summary ---
     text_content = extract_text_from_pdf(file) if file.filename.lower().endswith('.pdf') else ""
-    ai_summary = generate_ai_summary(file)
-    file.seek(0)
-    
+    ai_summary = generate_ai_summary(file) # Re-using your function name
+    file.seek(0)  # Rewind file after reading for AI
+
+    # --- 4. Save the file to disk ---
     filename = secure_filename(file.filename)
     file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
     file.save(file_path)
 
+    # --- 5. Save metadata to the database ---
     conn = None
     try:
         conn = get_db_connection()
         cur = conn.cursor()
+
+        # Get the admin's associated regulator ID
         cur.execute("SELECT regulatorid FROM users WHERE userid = %s;", (uploader_id,))
         result = cur.fetchone()
         if not result or result[0] is None:
-            return jsonify({"error": "Admin user not associated with a regulator."}), 403
+            return jsonify({"error": "Admin user is not associated with a regulator."}), 403
         admin_regulator_id = result[0]
 
-        if text_content:
-            chunks = chunk_text(text_content) # Use a helper to split text into chunks
-            for chunk in chunks:
-                embedding = get_embedding(chunk)
-                cur.execute(
-                    "INSERT INTO document_chunks (document_id, chunk_text, embedding) VALUES (%s, %s, %s);",
-                    (new_doc_id, chunk, embedding)
-                )
+        # Insert the document and get its new ID
+        sql_doc = """
+            INSERT INTO documents (title, regulatorid, typeid, fileurl, uploadedby, summary_ai) 
+            VALUES (%s, %s, %s, %s, %s, %s) RETURNING documentid;
+        """
+        cur.execute(sql_doc, (title, admin_regulator_id, int(type_id), file_path, uploader_id, ai_summary))
+        
+        # --- ROBUSTNESS CHECK ---
+        new_doc_id_row = cur.fetchone()
+        if new_doc_id_row is None:
+            raise Exception("Failed to create document record in the database.")
+        new_doc_id = new_doc_id_row[0]
+        # --- END OF CHECK ---
 
-        sql_doc = "INSERT INTO documents (title, regulatorid, typeid, fileurl, uploadedby, summary_ai) VALUES (%s, %s, %s, %s, %s, %s) RETURNING documentid;"
-        cur.execute(sql_doc, (title, admin_regulator_id, type_id, file_path, uploader_id, ai_summary))
-        new_doc_id = cur.fetchone()[0]
-
+        # Link the new document to the selected financial services
         for service_id in service_ids:
-            cur.execute("INSERT INTO document_services (documentid, serviceid) VALUES (%s, %s);", (new_doc_id, service_id))
+            cur.execute("INSERT INTO document_services (documentid, serviceid) VALUES (%s, %s);", (new_doc_id, int(service_id)))
         
         conn.commit()
-        return jsonify({"success": True, "new_document": {"documentID": new_doc_id, "title": title}}), 201
+        return jsonify({"success": True, "message": "File uploaded successfully."}), 201
+
     except Exception as e:
-        if conn: conn.rollback()
-        return jsonify({"error": str(e)}), 500
+        if conn:
+            conn.rollback()
+        # Log the full error to the console for debugging
+        print(f"UPLOAD ERROR: {e}") 
+        return jsonify({"error": f"An unexpected server error occurred: {e}"}), 500
     finally:
-        if conn: conn.close()
+        if conn:
+            conn.close()
     pass
 
 # --- NEW SMART SEARCH ENDPOINT ---
