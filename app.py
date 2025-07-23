@@ -11,6 +11,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 import PyPDF2
 from PyPDF2 import PdfReader
 import time
+import openai
 from openai import OpenAI
 from io import BytesIO
 import pgvector.psycopg2
