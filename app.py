@@ -415,6 +415,8 @@ def check_session():
     if 'user_id' in session:
         return jsonify({
             'isAuthenticated': True,
+            'user_id': session['user_id'],  # Primary field
+            'userID': session['user_id'],   # Backward compatibility
             'role': session.get('user_role')
         })
     return jsonify({'isAuthenticated': False}), 401
@@ -480,16 +482,25 @@ def login():
             session.clear()
             session['user_id'] = user_data[2]
             session['user_role'] = user_data[1]
+            session.permanent = True
             
             audit_logger.log(user_id=g.user_id, action="user_login_success", metadata={"email": email, "ip": request.remote_addr})
             return jsonify({
                 "success": True,
                 "message": "Login successful",
                 "role": user_data[1],
-                "userID": user_data[2]
+                "user_id": user_data[2],  # Consistent naming
+                "userID": user_data[2]   # Backward compatibility
             })
-            # Ensure cookies are properly set
+               
+            # Set cookie headers
             response.headers.add('Access-Control-Allow-Credentials', 'true')
+            
+            audit_logger.log(
+                user_id=user_data[2], 
+                action="user_login_success", 
+                metadata={"email": email, "ip": request.remote_addr}
+            )
             return response
         else:
             audit_logger.log(user_id=None, action="user_login_failed", metadata={"email": email, "ip": request.remote_addr})
