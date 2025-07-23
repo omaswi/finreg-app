@@ -533,7 +533,14 @@ def logout():
     
     # Clear the server-side session and delete the browser cookie
     session.clear()
-    response.delete_cookie(app.session_cookie_name, path='/', domain=app.config.get('SESSION_COOKIE_DOMAIN'))
+    
+    # Get the cookie name from app.config and delete the cookie
+    cookie_name = app.config.get('SESSION_COOKIE_NAME', 'session')
+    response.delete_cookie(
+        key=cookie_name,
+        path='/',
+        domain=app.config.get('SESSION_COOKIE_DOMAIN')
+    )
     return response
 
 @app.route("/api/debug-session")
