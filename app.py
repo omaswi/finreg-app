@@ -1120,7 +1120,6 @@ def update_document(document_id):
     pass
 
 @app.route("/api/documents/<int:document_id>", methods=['DELETE'])
-@login_required
 @audit_action("document_archived", target_id_param="document_id")
 def delete_document(document_id):
     conn = None
