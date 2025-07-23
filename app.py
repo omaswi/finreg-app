@@ -825,7 +825,7 @@ def get_document_types():
     pass
         
 @app.route("/api/document-types", methods=['POST'])
-@login_required
+
 def create_document_type():
     data = request.get_json()
     typeName = data.get('typeName')
@@ -846,7 +846,7 @@ def create_document_type():
     pass
 
 @app.route("/api/document-types/<int:type_id>", methods=['PUT'])
-@login_required
+
 def update_document_type(type_id):
     data = request.get_json()
     typeName = data.get('typeName')
@@ -868,7 +868,7 @@ def update_document_type(type_id):
     pass
 
 @app.route("/api/document-types/<int:type_id>", methods=['DELETE'])
-@login_required
+
 def delete_document_type(type_id):
     """Performs a SOFT DELETE by archiving the document."""
     conn = None
@@ -891,7 +891,7 @@ def delete_document_type(type_id):
 
 # --- User Types ---
 @app.route("/api/user-types", methods=['GET'])
-@login_required
+
 def get_user_types():
     conn = None
     try:
@@ -908,7 +908,7 @@ def get_user_types():
     pass
 
 @app.route("/api/user-types", methods=['POST'])
-@login_required
+
 def create_user_type():
     """Admin endpoint to create a new user type."""
     data = request.get_json()
@@ -945,7 +945,7 @@ def create_user_type():
     pass
 
 @app.route("/api/user-types/<int:user_type_id>", methods=['PUT'])
-@login_required
+
 def update_user_type(user_type_id):
     data = request.get_json()
     typeName = data.get('typeName')
@@ -967,7 +967,7 @@ def update_user_type(user_type_id):
     pass
 
 @app.route("/api/user-types/<int:user_type_id>", methods=['DELETE'])
-@login_required
+
 def delete_user_type(user_type_id):
     conn = None
     try:
@@ -1004,7 +1004,7 @@ def get_all_documents():
         if conn: conn.close()
 
 @app.route("/api/documents", methods=['POST'])
-@login_required
+
 def create_document():
     uploader_id = session.get('user_id')
     if 'file' not in request.files: return jsonify({"error": "No file part"}), 400
@@ -1098,7 +1098,7 @@ def smart_search():
         if conn: conn.close()
 
 @app.route("/api/documents/<int:document_id>", methods=['PUT'])
-@login_required
+
 def update_document(document_id):
     data = request.get_json()
     title = data.get('title')
@@ -1154,7 +1154,7 @@ def get_all_faqs():
     pass
 
 @app.route("/api/faqs", methods=['POST'])
-@login_required
+
 def create_faq():
     data = request.get_json()
     question = data.get('question')
@@ -1176,7 +1176,7 @@ def create_faq():
     pass
 
 @app.route("/api/faqs/<int:faq_id>", methods=['PUT'])
-@login_required
+
 def update_faq(faq_id):
     data = request.get_json()
     question = data.get('question')
@@ -1199,7 +1199,7 @@ def update_faq(faq_id):
     pass
 
 @app.route("/api/faqs/<int:faq_id>", methods=['DELETE'])
-@login_required
+
 def delete_faq(faq_id):
     conn = None
     try:
@@ -1218,7 +1218,7 @@ def delete_faq(faq_id):
 
 # --- USER SUBSCRIPTION ENDPOINTS ---
 @app.route("/api/users/<int:user_id>/subscriptions", methods=['GET'])
-@login_required
+
 def get_user_subscriptions(user_id):
     if session.get('user_id') != user_id:
         return jsonify({"error": "Forbidden"}), 403
@@ -1236,7 +1236,7 @@ def get_user_subscriptions(user_id):
     pass
 
 @app.route("/api/users/<int:user_id>/subscriptions", methods=['POST','OPTIONS'])
-@login_required
+
 def update_user_subscriptions(user_id):
     if request.method == 'OPTIONS':
         return jsonify({})
