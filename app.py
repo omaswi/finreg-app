@@ -46,7 +46,8 @@ CORS(app,
     ],
     expose_headers=["Set-Cookie"],
     allow_headers=["Content-Type", "Authorization", "Accept"],
-    methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"]
+    methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    expose_headers=["Content-Type"]
 )
 
 app.config.update(
