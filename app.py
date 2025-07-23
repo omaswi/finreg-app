@@ -14,6 +14,7 @@ import time
 import openai
 from openai import OpenAI
 from io import BytesIO
+import numpy as np # Import numpy
 import pgvector.psycopg2
 client = OpenAI()
 
@@ -170,7 +171,8 @@ def get_db_connection():
 # --- NEW HELPER FUNCTIONS ---
 def get_embedding(text, model="text-embedding-ada-002"):
    text = text.replace("\n", " ")
-   return client.embeddings.create(input=[text], model=model).data[0].embedding
+   embedding = client.embeddings.create(input=[text], model=model).data[0].embedding
+   return np.array(embedding) # Return as a numpy array
 
 def extract_text_from_pdf(file_stream):
     try:
@@ -183,11 +185,19 @@ def extract_text_from_pdf(file_stream):
         print(f"Error extracting text from PDF: {e}")
         return ""
 
-def chunk_text(text, words_per_chunk=2800):
-    """Split text into manageable chunks"""
+def chunk_text(text, max_tokens=500):
+    # This is a simple chunking strategy; more advanced ones exist
     words = text.split()
-    return [' '.join(words[i:i + words_per_chunk]) 
-           for i in range(0, len(words), words_per_chunk)]
+    chunks = []
+    current_chunk = []
+    for word in words:
+        current_chunk.append(word)
+        if len(current_chunk) >= max_tokens:
+            chunks.append(" ".join(current_chunk))
+            current_chunk = []
+    if current_chunk:
+        chunks.append(" ".join(current_chunk))
+    return chunks
 
 def summarize_with_gpt(text_chunk):
     """Generate summary for a text chunk"""
@@ -1026,6 +1036,7 @@ def create_document():
         return jsonify({"error": "Title, type, and at least one service are required."}), 400
 
     # --- 3. Process the file and generate AI summary ---
+    file.seek(0) # Rewind file before reading
     text_content = extract_text_from_pdf(file) if file.filename.lower().endswith('.pdf') else ""
     ai_summary = generate_ai_summary(file) # Re-using your function name
     file.seek(0)  # Rewind file after reading for AI
@@ -1095,23 +1106,20 @@ def create_document():
 def smart_search():
     data = request.get_json()
     query = data.get('query')
-    print(f"--- STEP 1: RECEIVED QUERY ---")
-    print(f"Query Text: {query}")
-
     if not query:
         return jsonify({"error": "A search query is required."}), 400
 
+    conn = None
     try:
-        # Convert the user's query into an embedding
-        print(f"\n--- STEP 2: GENERATING EMBEDDING FOR QUERY ---")
+        # 1. Convert the user's query into a numpy array embedding
         query_embedding = get_embedding(query)
-        print(f"Embedding generated successfully. First 3 values: {query_embedding[:3]}...")
         
+        # 2. Connect and register the vector type with the connection
         conn = get_db_connection()
+        pgvector.psycopg2.register_vector(conn)
         cur = conn.cursor()
-        pgvector.psycopg2.register_vector(conn) # Register the vector type
 
-        # Perform the similarity search
+        # 3. Perform the similarity search
         sql = """
             SELECT dc.chunk_text, d.title, d.documentid
             FROM document_chunks dc
@@ -1119,34 +1127,21 @@ def smart_search():
             ORDER BY dc.embedding <=> %s
             LIMIT 5;
         """
-        
-        print(f"\n--- STEP 3: EXECUTING DATABASE SIMILARITY SEARCH ---")
+        # 4. Pass the numpy array directly to the execute function
         cur.execute(sql, (query_embedding,))
         results = cur.fetchall()
-        print(f"Database returned {len(results)} results.")
-
+        
         search_results = [
             {"text": row[0], "source_document": row[1], "documentID": row[2]}
             for row in results
         ]
         
-        print(f"\n--- STEP 4: FORMATTING FINAL RESULTS ---")
-        # Print just the first result for brevity
-        if search_results:
-            print(f"First result: {search_results[0]}")
-        else:
-            print("No results to format.")
-        
-        print(f"\n--- SEARCH COMPLETE ---")
         return jsonify(search_results)
-        
     except Exception as e:
-        print(f"\n---! ERROR DURING SEARCH !---")
-        print(f"Error: {str(e)}")
+        print(f"SMART SEARCH ERROR: {str(e)}")
         return jsonify({"error": str(e)}), 500
     finally:
-        if 'conn' in locals() and conn:
-            conn.close()
+        if conn: conn.close()
 
 @app.route("/api/documents/<int:document_id>", methods=['PUT'])
 
