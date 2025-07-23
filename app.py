@@ -156,14 +156,6 @@ def log_system_action(action, target_type=None, target_id=None, details=None):
 def load_user_from_session():
     g.user_id = session.get('user_id')
 
-@app.after_request
-def after_request(response):
-    response.headers.add('Access-Control-Allow-Origin', 'http://localhost:8000')
-    response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
-    response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
-    response.headers.add('Access-Control-Allow-Credentials', 'true')
-    return response
-
 # --- HELPER FUNCTIONS ---
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
@@ -1106,11 +1098,12 @@ def update_user_subscriptions(user_id):
     if request.method == 'OPTIONS':
         # Handle preflight request
         response = jsonify({})
-        response.headers.add('Access-Control-Allow-Origin', 'http://localhost:8000')
-        response.headers.add('Access-Control-Allow-Credentials', 'true')
-        response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
-        response.headers.add('Access-Control-Allow-Methods', 'POST, OPTIONS')
         return response
+
+           
+    # Verify content type
+    if not request.is_json:
+        return jsonify({"error": "Content-Type must be application/json"}), 415
         
     # Verify the requesting user matches the user_id in the URL
     if session.get('user_id') != user_id:
