@@ -78,6 +78,7 @@ class AuditLogger:
             if conn: conn.rollback()
         finally:
             if conn: conn.close()
+        pass # Placeholder for your existing audit log code
 
 audit_logger = AuditLogger(DB_CONFIG)
 
@@ -328,6 +329,7 @@ def get_financial_services():
         return jsonify({"error": str(e)}), 500
     finally:
         if conn: conn.close()
+    pass
 
 @app.route("/api/documents/<int:service_id>", methods=['GET'])
 def get_documents_by_service(service_id):
@@ -351,6 +353,7 @@ def get_documents_by_service(service_id):
         return jsonify({"error": str(e)}), 500
     finally:
         if conn: conn.close()
+    pass
 
 @app.route("/api/download/<int:document_id>", methods=['GET'])
 def download_document(document_id):
@@ -371,6 +374,7 @@ def download_document(document_id):
         return jsonify({"error": f"Server error: {str(e)}"}), 500
     finally:
         if conn: conn.close()
+    pass
 
 @app.route("/api/chatbot", methods=['POST'])
 def chatbot_query():
@@ -399,6 +403,7 @@ def chatbot_query():
         return jsonify({"answer": f"An error occurred: {str(e)}"}), 500
     finally:
         if conn: conn.close()
+    pass
 
 # === USER AUTHENTICATION & REGISTRATION ===
 
@@ -446,6 +451,17 @@ def register_user():
         return jsonify({"error": str(e)}), 500
     finally:
         if conn: conn.close()
+    pass
+
+# ✅ 1. NEW LOGIN REQUIRED DECORATOR
+# This decorator will be used to protect specific routes.
+def login_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'user_id' not in session:
+            return jsonify({"error": "Authentication required"}), 401
+        return f(*args, **kwargs)
+    return decorated_function
 
 @app.route("/api/login", methods=['POST'])
 def login():
@@ -484,16 +500,11 @@ def login():
                 "user_id": user_data[2],  # Consistent naming
                 "userID": user_data[2]   # Backward compatibility
             })
-               
-            # Set cookie headers
-            response.headers.add('Access-Control-Allow-Credentials', 'true')
-            
             audit_logger.log(
                 user_id=user_data[2], 
                 action="user_login_success", 
                 metadata={"email": email, "ip": request.remote_addr}
             )
-            return response
         else:
             audit_logger.log(user_id=None, action="user_login_failed", metadata={"email": email, "ip": request.remote_addr})
             return jsonify({"error": "Invalid email or password"}), 401
@@ -510,24 +521,20 @@ def login():
         if 'conn' in locals():
             conn.close()
 
+
 @app.route("/api/logout", methods=['POST'])
 def logout():
     user_id = session.get('user_id')
     if user_id:
         audit_logger.log(user_id=user_id, action="user_logout", metadata={"ip": request.remote_addr})
-    session.clear()
-    return jsonify({"success": True, "message": "You have Logged out successfully"})
-    response.delete_cookie(app.session_cookie_name)
-    return response
 
-@app.before_request
-def verify_session():
-    # Skip session check for login and static files
-    if request.path.startswith('/api/login') or request.path.startswith('/static'):
-        return
-        
-    if 'user_id' not in session:
-        return jsonify({"error": "Unauthorized"}), 401
+    # Create the response object first
+    response = jsonify({"success": True, "message": "You have Logged out successfully"})
+    
+    # Clear the server-side session and delete the browser cookie
+    session.clear()
+    response.delete_cookie(app.session_cookie_name, path='/', domain=app.config.get('SESSION_COOKIE_DOMAIN'))
+    return response
 
 @app.route("/api/debug-session")
 def debug_session():
@@ -676,6 +683,7 @@ def get_regulators():
         return jsonify({"error": str(e)}), 500
     finally:
         if conn: conn.close()
+    pass
 
 @app.route("/api/regulators", methods=['POST'])
 def create_regulator():
@@ -704,6 +712,7 @@ def create_regulator():
             conn.close()
 
 @app.route("/api/regulators/<int:regulator_id>", methods=['PUT'])
+@login_required
 def update_regulator(regulator_id):
     data = request.get_json()
     name = data.get('name')
@@ -725,8 +734,10 @@ def update_regulator(regulator_id):
         return jsonify({"error": str(e)}), 500
     finally:
         if conn: conn.close()
+    pass
 
 @app.route("/api/regulators/<int:regulator_id>", methods=['DELETE'])
+@login_required
 def delete_regulator(regulator_id):
     conn = None
     try:
@@ -743,6 +754,7 @@ def delete_regulator(regulator_id):
         return jsonify({"error": str(e)}), 500
     finally:
         if conn: conn.close()
+    pass
 
 # --- Document Types ---
 @app.route("/api/document-types", methods=['GET'])
@@ -759,8 +771,10 @@ def get_document_types():
         return jsonify({"error": str(e)}), 500
     finally:
         if conn: conn.close()
+    pass
         
 @app.route("/api/document-types", methods=['POST'])
+@login_required
 def create_document_type():
     data = request.get_json()
     typeName = data.get('typeName')
@@ -778,8 +792,10 @@ def create_document_type():
         return jsonify({"error": str(e)}), 500
     finally:
         if conn: conn.close()
+    pass
 
 @app.route("/api/document-types/<int:type_id>", methods=['PUT'])
+@login_required
 def update_document_type(type_id):
     data = request.get_json()
     typeName = data.get('typeName')
@@ -798,8 +814,10 @@ def update_document_type(type_id):
         return jsonify({"error": str(e)}), 500
     finally:
         if conn: conn.close()
+    pass
 
 @app.route("/api/document-types/<int:type_id>", methods=['DELETE'])
+@login_required
 def delete_document_type(type_id):
     """Performs a SOFT DELETE by archiving the document."""
     conn = None
@@ -818,9 +836,11 @@ def delete_document_type(type_id):
         return jsonify({"error": str(e)}), 500
     finally:
         if conn: conn.close()
+    pass
 
 # --- User Types ---
 @app.route("/api/user-types", methods=['GET'])
+@login_required
 def get_user_types():
     conn = None
     try:
@@ -834,8 +854,10 @@ def get_user_types():
         return jsonify({"error": str(e)}), 500
     finally:
         if conn: conn.close()
+    pass
 
 @app.route("/api/user-types", methods=['POST'])
+@login_required
 def create_user_type():
     """Admin endpoint to create a new user type."""
     data = request.get_json()
@@ -869,8 +891,10 @@ def create_user_type():
     finally:
         if conn is not None:
             conn.close()
+    pass
 
 @app.route("/api/user-types/<int:user_type_id>", methods=['PUT'])
+@login_required
 def update_user_type(user_type_id):
     data = request.get_json()
     typeName = data.get('typeName')
@@ -889,8 +913,10 @@ def update_user_type(user_type_id):
         return jsonify({"error": str(e)}), 500
     finally:
         if conn: conn.close()
+    pass
 
 @app.route("/api/user-types/<int:user_type_id>", methods=['DELETE'])
+@login_required
 def delete_user_type(user_type_id):
     conn = None
     try:
@@ -908,6 +934,7 @@ def delete_user_type(user_type_id):
         return jsonify({"error": str(e)}), 500
     finally:
         if conn: conn.close()
+    pass
 
 # --- Documents ---
 @app.route("/api/documents", methods=['GET'])
@@ -926,6 +953,7 @@ def get_all_documents():
         if conn: conn.close()
 
 @app.route("/api/documents", methods=['POST'])
+@login_required
 def create_document():
     uploader_id = session.get('user_id')
     if 'file' not in request.files: return jsonify({"error": "No file part"}), 400
@@ -968,8 +996,10 @@ def create_document():
         return jsonify({"error": str(e)}), 500
     finally:
         if conn: conn.close()
+    pass
 
 @app.route("/api/documents/<int:document_id>", methods=['PUT'])
+@login_required
 def update_document(document_id):
     data = request.get_json()
     title = data.get('title')
@@ -988,8 +1018,10 @@ def update_document(document_id):
         return jsonify({"error": str(e)}), 500
     finally:
         if conn: conn.close()
+    pass
 
 @app.route("/api/documents/<int:document_id>", methods=['DELETE'])
+@login_required
 @audit_action("document_archived", target_id_param="document_id")
 def delete_document(document_id):
     conn = None
@@ -1004,6 +1036,7 @@ def delete_document(document_id):
         return jsonify({"error": str(e)}), 500
     finally:
         if conn: conn.close()
+    pass
 
 # --- FAQs ---
 @app.route("/api/faqs", methods=['GET'])
@@ -1020,8 +1053,10 @@ def get_all_faqs():
         return jsonify({"error": str(e)}), 500
     finally:
         if conn: conn.close()
+    pass
 
 @app.route("/api/faqs", methods=['POST'])
+@login_required
 def create_faq():
     data = request.get_json()
     question = data.get('question')
@@ -1040,8 +1075,10 @@ def create_faq():
         return jsonify({"error": str(e)}), 500
     finally:
         if conn: conn.close()
+    pass
 
 @app.route("/api/faqs/<int:faq_id>", methods=['PUT'])
+@login_required
 def update_faq(faq_id):
     data = request.get_json()
     question = data.get('question')
@@ -1061,8 +1098,10 @@ def update_faq(faq_id):
         return jsonify({"error": str(e)}), 500
     finally:
         if conn: conn.close()
+    pass
 
 @app.route("/api/faqs/<int:faq_id>", methods=['DELETE'])
+@login_required
 def delete_faq(faq_id):
     conn = None
     try:
@@ -1076,11 +1115,15 @@ def delete_faq(faq_id):
         return jsonify({"error": str(e)}), 500
     finally:
         if conn: conn.close()
+    pass
 
 
 # --- USER SUBSCRIPTION ENDPOINTS ---
 @app.route("/api/users/<int:user_id>/subscriptions", methods=['GET'])
+@login_required
 def get_user_subscriptions(user_id):
+    if session.get('user_id') != user_id:
+        return jsonify({"error": "Forbidden"}), 403
     conn = None
     try:
         conn = get_db_connection()
@@ -1092,23 +1135,20 @@ def get_user_subscriptions(user_id):
         return jsonify({"error": str(e)}), 500
     finally:
         if conn: conn.close()
+    pass
 
 @app.route("/api/users/<int:user_id>/subscriptions", methods=['POST','OPTIONS'])
+@login_required
 def update_user_subscriptions(user_id):
     if request.method == 'OPTIONS':
-        # Handle preflight request
-        response = jsonify({})
-        return response
+        return jsonify({})
 
-           
-    # Verify content type
     if not request.is_json:
         return jsonify({"error": "Content-Type must be application/json"}), 415
-        
-    # Verify the requesting user matches the user_id in the URL
+
     if session.get('user_id') != user_id:
-        return jsonify({"error": "Unauthorized"}), 401
-        
+        return jsonify({"error": "Forbidden"}), 403
+
     data = request.get_json()
     service_ids = data.get('serviceIDs', [])
     conn = None
@@ -1137,6 +1177,7 @@ def update_user_subscriptions(user_id):
 # === IT ADMIN ARCHIVE & RESTORE ENDPOINTS ===
 
 @app.route("/api/admin/archive/users", methods=['GET'])
+@login_required
 def get_archived_users():
     conn = get_db_connection()
     try:
@@ -1154,8 +1195,10 @@ def get_archived_users():
         return jsonify({"error": str(e)}), 500
     finally:
         if conn: conn.close()
+    pass
 
 @app.route("/api/admin/archive/documents", methods=['GET'])
+@login_required
 def get_archived_documents():
     conn = get_db_connection()
     try:
@@ -1167,8 +1210,10 @@ def get_archived_documents():
         return jsonify({"error": str(e)}), 500
     finally:
         if conn: conn.close()
+    pass
 
 @app.route("/api/admin/restore/user/<int:user_id>", methods=['POST'])
+@login_required
 @audit_action("user_restored", target_id_param="user_id")
 def restore_user(user_id):
     conn = get_db_connection()
@@ -1182,8 +1227,10 @@ def restore_user(user_id):
         return jsonify({"error": str(e)}), 500
     finally:
         if conn: conn.close()
+    pass
 
 @app.route("/api/admin/restore/document/<int:document_id>", methods=['POST'])
+@login_required
 @audit_action("document_restored", target_id_param="document_id")
 def restore_document(document_id):
     conn = get_db_connection()
@@ -1197,3 +1244,4 @@ def restore_document(document_id):
         return jsonify({"error": str(e)}), 500
     finally:
         if conn: conn.close()
+    pass
