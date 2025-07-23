@@ -1048,6 +1048,17 @@ def create_document():
             return jsonify({"error": "Admin user is not associated with a regulator."}), 403
         admin_regulator_id = result[0]
 
+        # --- NEW: Process and store embeddings ---
+        text_content = extract_text_from_pdf(file)
+        if text_content:
+            chunks = chunk_text(text_content) # Use a helper to split text into chunks
+            for chunk in chunks:
+                embedding = get_embedding(chunk)
+                cur.execute(
+                    "INSERT INTO document_chunks (document_id, chunk_text, embedding) VALUES (%s, %s, %s);",
+                    (new_doc_id, chunk, embedding)
+                )
+
         # Insert the document and get its new ID
         sql_doc = """
             INSERT INTO documents (title, regulatorid, typeid, fileurl, uploadedby, summary_ai) 
@@ -1365,3 +1376,95 @@ def restore_document(document_id):
     finally:
         if conn: conn.close()
     pass
+
+# === NEWS CRUD ENDPOINTS ===
+
+@app.route("/api/news", methods=['GET'])
+def get_all_news():
+    """Gets all news articles, newest first."""
+    conn = None
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        # Select all news, order by publication date descending
+        cur.execute("SELECT article_id, title, content, publication_date FROM news_articles ORDER BY publication_date DESC;")
+        articles = [{"article_id": row[0], "title": row[1], "content": row[2], "publication_date": row[3]} for row in cur.fetchall()]
+        return jsonify(articles)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        if conn: conn.close()
+
+@app.route("/api/news", methods=['POST'])
+@require_role(['Super Administrator', 'IT Administrator']) # Protect this route
+def create_news_article():
+    """Creates a new news article. Author is the logged-in admin."""
+    author_id = session.get('user_id')
+    data = request.get_json()
+    title = data.get('title')
+    content = data.get('content')
+
+    if not title or not content:
+        return jsonify({"error": "Title and content are required."}), 400
+
+    conn = None
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        sql = "INSERT INTO news_articles (title, content, author_id) VALUES (%s, %s, %s) RETURNING article_id;"
+        cur.execute(sql, (title, content, author_id))
+        new_id = cur.fetchone()[0]
+        conn.commit()
+        return jsonify({"success": True, "message": "News article posted.", "article_id": new_id}), 201
+    except Exception as e:
+        if conn: conn.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        if conn: conn.close()
+
+# === EVENTS CRUD ENDPOINTS ===
+
+@app.route("/api/events", methods=['GET'])
+def get_all_events():
+    """Gets all upcoming events, ordered by date."""
+    conn = None
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        # Select events that are in the future
+        cur.execute("SELECT event_id, title, description, event_date, location FROM events WHERE event_date >= CURRENT_TIMESTAMP ORDER BY event_date ASC;")
+        events = [{"event_id": row[0], "title": row[1], "description": row[2], "event_date": row[3], "location": row[4]} for row in cur.fetchall()]
+        return jsonify(events)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        if conn: conn.close()
+
+@app.route("/api/events", methods=['POST'])
+@require_role(['Super Administrator', 'IT Administrator']) # Protect this route
+def create_event():
+    """Creates a new event. Creator is the logged-in admin."""
+    creator_id = session.get('user_id')
+    data = request.get_json()
+    title = data.get('title')
+    description = data.get('description')
+    event_date = data.get('event_date')
+    location = data.get('location')
+
+    if not title or not event_date:
+        return jsonify({"error": "Title and event date are required."}), 400
+
+    conn = None
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        sql = "INSERT INTO events (title, description, event_date, location, created_by) VALUES (%s, %s, %s, %s, %s) RETURNING event_id;"
+        cur.execute(sql, (title, description, event_date, location, creator_id))
+        new_id = cur.fetchone()[0]
+        conn.commit()
+        return jsonify({"success": True, "message": "Event created.", "event_id": new_id}), 201
+    except Exception as e:
+        if conn: conn.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        if conn: conn.close()
