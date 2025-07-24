@@ -1375,7 +1375,6 @@ def restore_user(user_id):
     pass
 
 @app.route("/api/admin/restore/document/<int:document_id>", methods=['POST'])
-
 @audit_action("document_restored", target_id_param="document_id")
 def restore_document(document_id):
     conn = get_db_connection()
@@ -1395,15 +1394,49 @@ def restore_document(document_id):
 
 @app.route("/api/news", methods=['GET'])
 def get_all_news():
-    """Gets all news articles, newest first."""
+    """Gets all news articles, newest first, with pagination."""
+    page = request.args.get('page', 1, type=int)
+    per_page = request.args.get('per_page', 5, type=int)
+    offset = (page - 1) * per_page
+    
     conn = None
     try:
         conn = get_db_connection()
         cur = conn.cursor()
-        # Select all news, order by publication date descending
-        cur.execute("SELECT article_id, title, content, publication_date FROM news_articles ORDER BY publication_date DESC;")
+        
+        # Get total count for pagination
+        cur.execute("SELECT COUNT(*) FROM news_articles;")
+        total_items = cur.fetchone()[0]
+        total_pages = (total_items + per_page - 1) // per_page
+
+        # Get the requested page of articles
+        sql = "SELECT article_id, title, content, publication_date FROM news_articles ORDER BY publication_date DESC LIMIT %s OFFSET %s;"
+        cur.execute(sql, (per_page, offset))
         articles = [{"article_id": row[0], "title": row[1], "content": row[2], "publication_date": row[3]} for row in cur.fetchall()]
-        return jsonify(articles)
+        
+        return jsonify({
+            "articles": articles,
+            "page": page,
+            "total_pages": total_pages
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        if conn: conn.close()
+
+@app.route("/api/news/<int:article_id>", methods=['GET'])
+def get_news_article(article_id):
+    """Gets a single news article by its ID."""
+    conn = None
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute("SELECT title, content, publication_date FROM news_articles WHERE article_id = %s;", (article_id,))
+        article = cur.fetchone()
+        if article:
+            return jsonify({"title": article[0], "content": article[1], "publication_date": article[2]})
+        else:
+            return jsonify({"error": "Article not found"}), 404
     except Exception as e:
         return jsonify({"error": str(e)}), 500
     finally:
