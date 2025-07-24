@@ -1455,7 +1455,7 @@ def get_all_events():
         if conn: conn.close()
 
 @app.route("/api/events", methods=['POST'])
-@require_role(['Super Administrator', 'IT Administrator']) # Protect this route
+# @require_role(['Super Administrator', 'IT Administrator']) # Protect this route
 def create_event():
     """Creates a new event. Creator is the logged-in admin."""
     creator_id = session.get('user_id')
