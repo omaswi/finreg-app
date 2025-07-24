@@ -153,7 +153,6 @@ def log_system_action(action, target_type=None, target_id=None, details=None):
         metadata=metadata
     )
 
-
 # === PUBLIC-FACING API ENDPOINTS ===
 
 @app.before_request
@@ -620,7 +619,7 @@ def require_role(role_name):
     return decorator
 
 @app.route("/api/regulator/documents", methods=['GET'])
-@require_role('Regulator Editor') # Protect this route
+@require_role('Regulator Editor')
 def get_regulator_documents():
     """Gets documents only for the logged-in regulator admin."""
     regulator_id = session.get('regulator_id')
@@ -774,7 +773,6 @@ def create_regulator():
             conn.close()
 
 @app.route("/api/regulators/<int:regulator_id>", methods=['PUT'])
-
 def update_regulator(regulator_id):
     data = request.get_json()
     name = data.get('name')
@@ -799,7 +797,6 @@ def update_regulator(regulator_id):
     pass
 
 @app.route("/api/regulators/<int:regulator_id>", methods=['DELETE'])
-
 def delete_regulator(regulator_id):
     conn = None
     try:
@@ -856,7 +853,6 @@ def create_document_type():
     pass
 
 @app.route("/api/document-types/<int:type_id>", methods=['PUT'])
-
 def update_document_type(type_id):
     data = request.get_json()
     typeName = data.get('typeName')
@@ -878,7 +874,6 @@ def update_document_type(type_id):
     pass
 
 @app.route("/api/document-types/<int:type_id>", methods=['DELETE'])
-
 def delete_document_type(type_id):
     """Performs a SOFT DELETE by archiving the document."""
     conn = None
@@ -901,7 +896,6 @@ def delete_document_type(type_id):
 
 # --- User Types ---
 @app.route("/api/user-types", methods=['GET'])
-
 def get_user_types():
     conn = None
     try:
@@ -918,7 +912,6 @@ def get_user_types():
     pass
 
 @app.route("/api/user-types", methods=['POST'])
-
 def create_user_type():
     """Admin endpoint to create a new user type."""
     data = request.get_json()
@@ -955,7 +948,6 @@ def create_user_type():
     pass
 
 @app.route("/api/user-types/<int:user_type_id>", methods=['PUT'])
-
 def update_user_type(user_type_id):
     data = request.get_json()
     typeName = data.get('typeName')
@@ -977,7 +969,6 @@ def update_user_type(user_type_id):
     pass
 
 @app.route("/api/user-types/<int:user_type_id>", methods=['DELETE'])
-
 def delete_user_type(user_type_id):
     conn = None
     try:
@@ -1145,7 +1136,6 @@ def smart_search():
         if conn: conn.close()
 
 @app.route("/api/documents/<int:document_id>", methods=['PUT'])
-
 def update_document(document_id):
     data = request.get_json()
     title = data.get('title')
@@ -1201,7 +1191,6 @@ def get_all_faqs():
     pass
 
 @app.route("/api/faqs", methods=['POST'])
-
 def create_faq():
     data = request.get_json()
     question = data.get('question')
@@ -1223,7 +1212,6 @@ def create_faq():
     pass
 
 @app.route("/api/faqs/<int:faq_id>", methods=['PUT'])
-
 def update_faq(faq_id):
     data = request.get_json()
     question = data.get('question')
@@ -1246,7 +1234,6 @@ def update_faq(faq_id):
     pass
 
 @app.route("/api/faqs/<int:faq_id>", methods=['DELETE'])
-
 def delete_faq(faq_id):
     conn = None
     try:
@@ -1265,7 +1252,6 @@ def delete_faq(faq_id):
 
 # --- USER SUBSCRIPTION ENDPOINTS ---
 @app.route("/api/users/<int:user_id>/subscriptions", methods=['GET'])
-
 def get_user_subscriptions(user_id):
     if session.get('user_id') != user_id:
         return jsonify({"error": "Forbidden"}), 403
@@ -1283,7 +1269,6 @@ def get_user_subscriptions(user_id):
     pass
 
 @app.route("/api/users/<int:user_id>/subscriptions", methods=['POST','OPTIONS'])
-
 def update_user_subscriptions(user_id):
     if request.method == 'OPTIONS':
         return jsonify({})
@@ -1322,7 +1307,6 @@ def update_user_subscriptions(user_id):
 # === IT ADMIN ARCHIVE & RESTORE ENDPOINTS ===
 
 @app.route("/api/admin/archive/users", methods=['GET'])
-
 def get_archived_users():
     conn = get_db_connection()
     try:
@@ -1343,7 +1327,6 @@ def get_archived_users():
     pass
 
 @app.route("/api/admin/archive/documents", methods=['GET'])
-
 def get_archived_documents():
     conn = get_db_connection()
     try:
@@ -1358,7 +1341,6 @@ def get_archived_documents():
     pass
 
 @app.route("/api/admin/restore/user/<int:user_id>", methods=['POST'])
-
 @audit_action("user_restored", target_id_param="user_id")
 def restore_user(user_id):
     conn = get_db_connection()
@@ -1473,15 +1455,55 @@ def create_news_article():
 
 @app.route("/api/events", methods=['GET'])
 def get_all_events():
-    """Gets all upcoming events, ordered by date."""
+    """Gets all upcoming events, ordered by date, with pagination."""
+    page = request.args.get('page', 1, type=int)
+    per_page = request.args.get('per_page', 3, type=int) # Show 3 events per page
+    offset = (page - 1) * per_page
+    
     conn = None
     try:
         conn = get_db_connection()
         cur = conn.cursor()
-        # Select events that are in the future
-        cur.execute("SELECT event_id, title, description, event_date, location FROM events WHERE event_date >= CURRENT_TIMESTAMP ORDER BY event_date ASC;")
+        
+        # Get total count of upcoming events
+        cur.execute("SELECT COUNT(*) FROM events WHERE event_date >= CURRENT_TIMESTAMP;")
+        total_items = cur.fetchone()[0]
+        total_pages = (total_items + per_page - 1) // per_page
+
+        # Get the requested page of events
+        sql = """
+            SELECT event_id, title, description, event_date, location 
+            FROM events 
+            WHERE event_date >= CURRENT_TIMESTAMP 
+            ORDER BY event_date ASC 
+            LIMIT %s OFFSET %s;
+        """
+        cur.execute(sql, (per_page, offset))
         events = [{"event_id": row[0], "title": row[1], "description": row[2], "event_date": row[3], "location": row[4]} for row in cur.fetchall()]
-        return jsonify(events)
+        
+        return jsonify({
+            "events": events,
+            "page": page,
+            "total_pages": total_pages
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        if conn: conn.close()
+
+@app.route("/api/events/<int:event_id>", methods=['GET'])
+def get_event(event_id):
+    """Gets a single event by its ID."""
+    conn = None
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute("SELECT title, description, event_date, location FROM events WHERE event_id = %s;", (event_id,))
+        event = cur.fetchone()
+        if event:
+            return jsonify({"title": event[0], "description": event[1], "event_date": event[2], "location": event[3]})
+        else:
+            return jsonify({"error": "Event not found"}), 404
     except Exception as e:
         return jsonify({"error": str(e)}), 500
     finally:
