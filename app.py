@@ -1,4 +1,4 @@
-import os
+import os, re
 import psycopg2
 import json
 import secrets
@@ -172,6 +172,16 @@ def get_embedding(text, model="text-embedding-ada-002"):
    text = text.replace("\n", " ")
    embedding = client.embeddings.create(input=[text], model=model).data[0].embedding
    return np.array(embedding) # Return as a numpy array
+
+def clean_text(text):
+    """A simple function to clean up common text extraction errors."""
+    # Corrects words that are incorrectly split by a space (e.g., "busi ness" -> "business")
+    text = re.sub(r'(\w)\s{1,2}(\w)', r'\1\2', text)
+    # Removes hyphenation at the end of a line (e.g., "require-\nment" -> "requirement")
+    text = re.sub(r'(\w)-\n(\w)', r'\1\2', text)
+    # Replaces multiple spaces or newlines with a single space
+    text = re.sub(r'\s+', ' ', text).strip()
+    return text
 
 def extract_text_from_pdf(file_stream):
     try:
@@ -1029,7 +1039,8 @@ def create_document():
     # --- 3. Process the file and generate AI summary ---
     file.seek(0) # Rewind file before reading
     text_content = extract_text_from_pdf(file) if file.filename.lower().endswith('.pdf') else ""
-    ai_summary = generate_ai_summary(file) # Re-using your function name
+    cleaned_text = clean_text(text_content) # Apply the cleaning function
+    ai_summary = generate_ai_summary(cleaned_text) # Re-using your function name
     file.seek(0)  # Rewind file after reading for AI
 
     # --- 4. Save the file to disk ---
@@ -1067,8 +1078,8 @@ def create_document():
 
         # --- NEW: Process and store embeddings ---
         text_content = extract_text_from_pdf(file)
-        if text_content:
-            chunks = chunk_text(text_content) # Use a helper to split text into chunks
+        if cleaned_text:
+            chunks = chunk_text(cleaned_text) # Use a helper to split text into chunks
             for chunk in chunks:
                 embedding = get_embedding(chunk)
                 cur.execute(
@@ -1104,7 +1115,8 @@ def smart_search():
     conn = None
     try:
         # 1. Convert the user's query into a numpy array embedding
-        query_embedding = get_embedding(query)
+        cleaned_query = clean_text(query)
+        query_embedding = get_embedding(cleaned_query)
         
         # 2. Connect and register the vector type with the connection
         conn = get_db_connection()
@@ -1113,22 +1125,43 @@ def smart_search():
 
         # 3. Perform the similarity search
         sql = """
-            SELECT dc.chunk_text, d.title, d.documentid
+            SELECT dc.chunk_text, d.title, d.documentid, (dc.embedding <=> %s) AS distance
             FROM document_chunks dc
             JOIN documents d ON dc.document_id = d.documentid
-            ORDER BY dc.embedding <=> %s
-            LIMIT 5;
+            ORDER BY distance LIMIT 3;
         """
         # 4. Pass the numpy array directly to the execute function
         cur.execute(sql, (query_embedding,))
-        results = cur.fetchall()
+        doc_results = cur.fetchall()
+
+        # --- 2. Search FAQs (Keyword Search) ---
+        # A simple search using ILIKE for case-insensitive matching
+        sql_faqs = "SELECT question, answer, faqid FROM faqs WHERE question ILIKE %s OR answer ILIKE %s LIMIT 2;"
+        search_term = f"%{cleaned_query}%"
+        cur.execute(sql_faqs, (search_term, search_term))
+        faq_results = cur.fetchall()
+
+        # --- 3. Combine and Format Results ---
+        final_results = []
         
-        search_results = [
-            {"text": row[0], "source_document": row[1], "documentID": row[2]}
-            for row in results
-        ]
+        # Add FAQ results, marked with a type
+        for row in faq_results:
+            final_results.append({
+                "type": "faq",
+                "question": row[0],
+                "answer": row[1]
+            })
         
-        return jsonify(search_results)
+        # Add Document chunk results, marked with a type
+        for row in doc_results:
+            final_results.append({
+                "type": "document",
+                "text": row[0],
+                "source_document": row[1],
+                "documentID": row[2]
+            })
+        
+        return jsonify(final_results)
     except Exception as e:
         print(f"SMART SEARCH ERROR: {str(e)}")
         return jsonify({"error": str(e)}), 500
