@@ -1137,7 +1137,7 @@ def smart_search():
         # --- 2. Search FAQs (Keyword Search) ---
         # A simple search using ILIKE for case-insensitive matching
         sql_faqs = "SELECT question, answer, faqid FROM faqs WHERE question ILIKE %s OR answer ILIKE %s LIMIT 2;"
-        search_term = f"%{cleaned_query}%"
+        search_term = f"%{query}%"
         cur.execute(sql_faqs, (search_term, search_term))
         faq_results = cur.fetchall()
 
