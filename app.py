@@ -455,26 +455,34 @@ def check_session():
     
 @app.route("/api/register", methods=['POST'])
 def register_user():
-    if 'profilePDF' not in request.files: return jsonify({"error": "Profile PDF is missing."}), 400
-    file = request.files['profilePDF']
+    # Get form data
     email = request.form.get('email')
     password = request.form.get('password')
     user_type_id = request.form.get('userTypeID')
-    if not all([email, password, user_type_id, file.filename]):
-        return jsonify({"error": "All fields are required."}), 400
-    if not allowed_file(file.filename): return jsonify({"error": "Invalid file type."}), 400
     
-    filename = secure_filename(f"profile_{email}_{file.filename}")
-    file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-    file.save(file_path)
+    if not all([email, password, user_type_id]):
+        return jsonify({"error": "Email, password, and user type are required."}), 400
+
+    file_path = None # Default to None if no file is uploaded
+    if 'profilePDF' in request.files:
+        file = request.files['profilePDF']
+        if file and file.filename != '' and allowed_file(file.filename):
+            filename = secure_filename(f"profile_{email}_{file.filename}")
+            file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+            file.save(file_path)
+
+    # Continue with saving user to the database
     password_hash = generate_password_hash(password)
-    public_user_role_id = 3 # Assuming 'Public User' has roleID = 3
+    public_user_role_id = 3 # 'Public User' role
 
     conn = None
     try:
         conn = get_db_connection()
         cur = conn.cursor()
-        sql = "INSERT INTO users (email, passwordhash, roleid, usertypeid, profiledetails) VALUES (%s, %s, %s, %s, %s);"
+        sql = """
+            INSERT INTO users (email, passwordhash, roleid, usertypeid, profiledetails) 
+            VALUES (%s, %s, %s, %s, %s);
+        """
         cur.execute(sql, (email, password_hash, public_user_role_id, user_type_id, file_path))
         conn.commit()
         return jsonify({"success": True, "message": "User registered successfully."}), 201
@@ -486,7 +494,6 @@ def register_user():
         return jsonify({"error": str(e)}), 500
     finally:
         if conn: conn.close()
-    pass
 
 # ✅ 1. NEW LOGIN REQUIRED DECORATOR
 # This decorator will be used to protect specific routes.
