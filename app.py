@@ -537,7 +537,7 @@ def register_user():
 
     # Continue with saving user to the database
     password_hash = generate_password_hash(password)
-    public_user_role_id = 3 # 'Public User' role
+    public_user_role_id = 1 # 'Public User' role
 
     conn = None
     try:
