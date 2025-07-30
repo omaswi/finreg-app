@@ -271,9 +271,18 @@ def generate_ai_summary(file):
 
 # === PUBLIC-FACING API ENDPOINTS ===
 
+#@app.route("/", methods=['GET'])
+#def health_check():
+#    return jsonify({"status": "ok", "message": "FinReg Portal API is running."})
+    
 @app.route("/", methods=['GET'])
-def health_check():
-    return jsonify({"status": "ok", "message": "FinReg Portal API is running."})
+def serve_index():
+    return send_from_directory('frontend', 'index.html')
+
+# This will serve any other file (like CSS or other HTML pages)
+@app.route('/<path:path>')
+def serve_static_files(path):
+    return send_from_directory('frontend', path)
 
 @app.route("/api/financial-services", methods=['POST'])
 def create_financial_service():
