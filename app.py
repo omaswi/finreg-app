@@ -83,6 +83,66 @@ class AuditLogger:
             if conn: conn.close()
         pass # Placeholder for your existing audit log code
 
+@app.route("/api/audit-trail", methods=['GET'])
+def get_audit_trail():
+    page = request.args.get('page', 1, type=int)
+    per_page = 5 # Show 5 logs per page
+    start_date = request.args.get('start_date')
+    end_date = request.args.get('end_date')
+    offset = (page - 1) * per_page
+
+    conn = None
+    try:
+        conn = psycopg2.connect(**DB_CONFIG)
+        cur = conn.cursor()
+
+        query_params = [per_page, offset]
+        # Base query
+        sql_base = """
+            FROM audit_trail a
+            LEFT JOIN users u ON a.user_id = u.userid
+        """
+        # Add date filtering if provided
+        where_clauses = []
+        if start_date:
+            where_clauses.append("a.timestamp >= %s")
+            query_params.insert(0, start_date)
+        if end_date:
+            where_clauses.append("a.timestamp <= %s")
+            query_params.insert(1, end_date)
+        
+        where_sql = ""
+        if where_clauses:
+            where_sql = "WHERE " + " AND ".join(where_clauses)
+
+        # Get total count for pagination
+        cur.execute(f"SELECT COUNT(*) {sql_base} {where_sql}", query_params[2:])
+        total_items = cur.fetchone()[0]
+        total_pages = (total_items + per_page - 1) // per_page
+        
+        # Get the logs for the current page
+        sql_select = f"""
+            SELECT a.log_id, a.timestamp, u.email, a.action, a.target_id, a.additional_info
+            {sql_base} {where_sql}
+            ORDER BY a.timestamp DESC
+            LIMIT %s OFFSET %s;
+        """
+        cur.execute(sql_select, query_params)
+        logs = [
+            {"log_id": row[0], "timestamp": row[1], "email": row[2] or "System", "action": row[3], "target_id": row[4], "info": row[5]}
+            for row in cur.fetchall()
+        ]
+        
+        return jsonify({
+            "logs": logs,
+            "page": page,
+            "total_pages": total_pages
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        if conn: conn.close()
+
 audit_logger = AuditLogger(DB_CONFIG)
 
 @app.before_request
