@@ -1,6 +1,5 @@
-import os, re
+import os, re, json
 import psycopg2
-import json
 import secrets
 from datetime import timedelta
 from functools import wraps
