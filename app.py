@@ -86,7 +86,7 @@ class AuditLogger:
 @app.route("/api/audit-trail", methods=['GET'])
 def get_audit_trail():
     page = request.args.get('page', 1, type=int)
-    per_page = 5 # Show 5 logs per page
+    per_page = 5
     start_date = request.args.get('start_date')
     end_date = request.args.get('end_date')
     offset = (page - 1) * per_page
@@ -96,33 +96,38 @@ def get_audit_trail():
         conn = psycopg2.connect(**DB_CONFIG)
         cur = conn.cursor()
 
-        query_params = [per_page, offset]
-        # Base query
+        query_params = []
+        where_clauses = []
+
+        # Base query and join
         sql_base = """
             FROM audit_trail a
-            LEFT JOIN users u ON a.user_id = u.userid
+            LEFT JOIN users u ON a.userid = u.userid
         """
+
         # Add date filtering if provided
-        where_clauses = []
         if start_date:
             where_clauses.append("a.timestamp >= %s")
-            query_params.insert(0, start_date)
+            query_params.append(start_date)
         if end_date:
             where_clauses.append("a.timestamp <= %s")
-            query_params.insert(1, end_date)
+            query_params.append(end_date)
         
         where_sql = ""
         if where_clauses:
             where_sql = "WHERE " + " AND ".join(where_clauses)
 
         # Get total count for pagination
-        cur.execute(f"SELECT COUNT(*) {sql_base} {where_sql}", query_params[2:])
+        cur.execute(f"SELECT COUNT(*) {sql_base} {where_sql}", query_params)
         total_items = cur.fetchone()[0]
         total_pages = (total_items + per_page - 1) // per_page
         
-        # Get the logs for the current page
+        # Add pagination parameters to the list for the final query
+        query_params.extend([per_page, offset])
+
+        # Get the logs for the current page using the CORRECT column names
         sql_select = f"""
-            SELECT a.log_id, a.timestamp, u.email, a.action, a.target_id, a.additional_info
+            SELECT a.auditid, a.timestamp, u.email, a.action, a.targetid, a.additional_info
             {sql_base} {where_sql}
             ORDER BY a.timestamp DESC
             LIMIT %s OFFSET %s;
