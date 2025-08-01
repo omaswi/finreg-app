@@ -1,4 +1,4 @@
-import os, re, json
+import os, re, json, time
 import psycopg2
 import secrets
 from datetime import timedelta
@@ -9,7 +9,6 @@ from werkzeug.utils import secure_filename
 from werkzeug.security import generate_password_hash, check_password_hash
 import PyPDF2
 from PyPDF2 import PdfReader
-import time
 import openai
 from openai import OpenAI
 from io import BytesIO
