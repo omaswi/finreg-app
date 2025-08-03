@@ -1,6 +1,5 @@
-import os, re, json, time
+import os, re, json, time, secrets
 import psycopg2
-import secrets
 from datetime import timedelta
 from functools import wraps
 from flask import Flask, jsonify, request, send_from_directory, session, g
